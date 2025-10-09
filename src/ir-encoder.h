@@ -31,4 +31,12 @@ struct IrSensor {
   IrSensor(uint32_t debounceUs, int pin_, int mpr) : pin(pin_), marksPerRev(mpr) {}
 };
 
+struct Position{
+    volatile uint32_t outerEdgesSinceInner = 0; // not a good variable name cuz goes from 0 to marks per rev -1
+    volatile bool haveSeenInner = false; //during startup to find absolute position.
+    volatile bool resetOnNext = false;
+
+    portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
+};
+
 #endif 

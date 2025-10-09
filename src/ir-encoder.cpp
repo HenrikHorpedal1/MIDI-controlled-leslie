@@ -13,14 +13,9 @@
 #define DEBOUNCE_MAX_US 120000        // upper bound [TUNE]
 #define DEBOUNCE_FRACTION 10
 
-// ================ Shared IR state =================
-
-
-volatile uint32_t outer_ir_rpm_x100     = 0;
-volatile uint32_t ir_fbMillis     = 0;
-
 IrSensor InnerSensor(DEBOUNCE_MAX_US, INNER_IR_PIN, INNER_MARKS_PER_REV);
 IrSensor OuterSensor(DEBOUNCE_MAX_US, OUTER_IR_PIN, OUTER_MARKS_PER_REV);
+Position FusedPosition;
 
 void IRAM_ATTR onIrEdge(void* pvParameter) {
   uint32_t now = micros();
@@ -28,18 +23,44 @@ void IRAM_ATTR onIrEdge(void* pvParameter) {
   IrSensor* sensor = static_cast<IrSensor*>(pvParameter);
 
   portENTER_CRITICAL_ISR(&sensor->lock);
-  if ((uint32_t)(now - sensor->lastEdgeUs) > sensor->debounceUs) {
-    if (sensor->prevEdgeUs != 0) {
-      sensor->lastPeriodUs = now - sensor->prevEdgeUs;
-    } else {
-      sensor->lastPeriodUs = 0;
-    }
-    sensor->prevEdgeUs = now;
-    sensor->lastEdgeUs = now;
-    sensor->passCount++;
-    sensor->newestEdgeProcessed = false;
+  //not valid detection/missdetection
+  if (!((uint32_t)(now - sensor->lastEdgeUs) > sensor->debounceUs)){
+      portEXIT_CRITICAL_ISR(&sensor->lock);
+      return;
   }
+  //we need two edges to calculate period.
+  if (sensor->prevEdgeUs != 0) {
+      sensor->lastPeriodUs = now - sensor->prevEdgeUs;
+  } else {
+      sensor->lastPeriodUs = 0;
+  }
+  sensor->prevEdgeUs = now;
+  sensor->lastEdgeUs = now;
+  sensor->passCount++;
+  sensor->newestEdgeProcessed = false;
   portEXIT_CRITICAL_ISR(&sensor->lock);
+
+  portENTER_CRITICAL_ISR(&FusedPosition.lock);
+  if (sensor == &InnerSensor){
+      FusedPosition.haveSeenInner = true;
+      FusedPosition.resetOnNext = true;
+      portEXIT_CRITICAL_ISR(&FusedPosition.lock);
+      //FusedPosition.outerEdgesSinceInner = 0;
+      return;
+  } 
+  //OuterSensor
+  if (sensor == &OuterSensor && FusedPosition.haveSeenInner == true){
+      if (FusedPosition.resetOnNext){
+        FusedPosition.outerEdgesSinceInner = 0;     
+        FusedPosition.resetOnNext = false;
+      } else{
+      uint32_t outerEdgesSinceInner = FusedPosition.outerEdgesSinceInner + 1;
+      //safety agaist double detections or missdetections, less cycles than using modulo.
+      if (outerEdgesSinceInner >= (uint32_t)OuterSensor.marksPerRev) outerEdgesSinceInner = 0; //unsure whether to reset or keep at maximum
+      FusedPosition.outerEdgesSinceInner = outerEdgesSinceInner;
+      }
+  }   
+  portEXIT_CRITICAL_ISR(&FusedPosition.lock);
 }
 
 // Helper: print RPM without floats
@@ -66,6 +87,20 @@ static inline uint32_t clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
   if (v < lo) return lo;
   if (v > hi) return hi;
   return v;
+}
+
+static void printAngularPosition(){
+    portENTER_CRITICAL(&FusedPosition.lock);
+    int positionIndex = FusedPosition.outerEdgesSinceInner;
+    bool validPosition = FusedPosition.haveSeenInner;
+    portEXIT_CRITICAL(&FusedPosition.lock);
+
+    if (validPosition){
+        float angle = (positionIndex * 360)/OUTER_MARKS_PER_REV;
+        Serial.printf("Angle = %.2f°\n", angle);
+    } else {
+        Serial.printf("Angle not defined,");
+    }
 }
 
 void updateDebounceTime(IrSensor* sensor, int32_t lastPeriodUs) {
@@ -117,7 +152,9 @@ void IrSensorTask(void* pvParameter){
                 //we need two marks in order to get a period
                 if (lastPeriodUs >0){
                     updateDebounceTime(sensor, lastPeriodUs);
-                    printRpmLine(passCount,lastPeriodUs, marksPerRev);
+                    //printRpmLine(passCount,lastPeriodUs, marksPerRev);
+                    printAngularPosition();
+            
                 }
 
                 IrSensorState = State::Active;
@@ -127,7 +164,8 @@ void IrSensorTask(void* pvParameter){
 
                 if (newdata){
                     updateDebounceTime(sensor, lastPeriodUs);
-                    printRpmLine(passCount,lastPeriodUs, marksPerRev);
+//                    printRpmLine(passCount,lastPeriodUs, marksPerRev);
+                    printAngularPosition();
                 }
 
                 timeout =  
