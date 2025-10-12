@@ -1,151 +1,84 @@
 #include <Arduino.h>
+#include "footswitch.h"
+#include "ir-encoder.h"
+#include "speed-controller.h"
 
-// ================= PI CONTROLLER TARGET (SLOW MODE) ====================
-#define TARGET_SLOW_RPM_X100 4000          // 40.00 RPM
-#define TARGET_SLOW_RPM_X100 3000          // 300.00 RPM for now
+extern volatile bool switchA;
+extern volatile bool switchB;
 
+extern IrSensor InnerSensor;
+extern IrSensor OuterSensor;
 
-// Slow-mode input guardrails
-const int   MAX_SLOW_INPUT_PERCENT       = 30;
-const int   MIN_SLOW_INPUT_PERCENT       = 0;
-const int   SLOW_OPEN_LOOP_INPUT_PERCENT = 15;
+extern GlobalPosition globalPosition;
+extern GlobalVelocity globalVelocity;
+extern GlobalVelocityReference globalVelocityReference;
+extern GlobalShouldStop globalShouldStop;
 
-// Fast-mode input guiderails
-const int   MAX_FAST_INPUT_PERCENT       = 60;
-const int   MIN_FAST_INPUT_PERCENT       = 0;
+SpeedControllerParameters speedControllerParameters{
+    &globalVelocity,
+    &globalVelocityReference,
+    &globalShouldStop 
+};
 
+extern const int pwmPin;
+extern const int dirPin;
 
-struct PID {
-  const float Kp = 0.005f;
-  const float Ki_per_s = 0.003f;
-  const float Kd = 0.0f;
-}
-
-
-// ================= MOTOR PWM & DIRECTION =================
-const int pwmPin     = 27;
-const int dirPin     = 25;
-
-const int freq       = 1000;
-const int resolution = 16;
-
-const int fastSpeed = 150;
-
-float     pi_integrator = 0.0f;
-uint32_t  lastCtlMs     = 0;
-
-static inline int clamp_int(int v, int lo, int hi) {
-  if (v < lo) return lo;
-  if (v > hi) return hi;
-  return v;
-}
-
-void toggleDirection() {
-  static bool directionState = false;
-  directionState = !directionState;
-
-  if (directionState) {
-    pinMode(dirPin, OUTPUT);
-    digitalWrite(dirPin, LOW);
-    Serial.println("Direction: LOW (Reversed?)");
-  } else {
-    pinMode(dirPin, INPUT_PULLUP);
-    Serial.println("Direction: HIGH / Floated (Forward?)");
-  }
-}
+extern const int freq;
+extern const int resolution;
 
 void setup() {
+
   Serial.begin(115200);
   delay(50);
+ 
+  //footswitch
+  xTaskCreatePinnedToCore(footSwitchTask, "SwTask", 2048, NULL, 1, NULL, 1);
+  Serial.println("Foot switch task started.");
 
-  pinMode(IR_PIN, INPUT);
-  attachInterrupt(digitalPinToInterrupt(IR_PIN), onIrEdge, FALLING);
+  //ir-sensor
+  pinMode(InnerSensor.pin, INPUT_PULLUP);
+  pinMode(OuterSensor.pin, INPUT_PULLUP);
+  attachInterruptArg(digitalPinToInterrupt(InnerSensor.pin), onIrEdge, (void*)&InnerSensor, FALLING);
+  attachInterruptArg(digitalPinToInterrupt(OuterSensor.pin), onIrEdge, (void*)&OuterSensor, FALLING);
+  //xTaskCreatePinnedToCore(IrSensorTask, "IR_INNER", 4096, (void*)&InnerSensor, 1, nullptr, APP_CPU_NUM);
+  xTaskCreatePinnedToCore(IrSensorTask, "IR_OUTER", 4096, (void*)&OuterSensor, 1, nullptr, APP_CPU_NUM);
+  Serial.println("IR encoder tasks started.");
 
+  //speedcontroller
   pinMode(dirPin, OUTPUT);
   digitalWrite(dirPin, LOW);  // default reversed direction
-
   ledcAttach(pwmPin, freq, resolution);
   ledcWrite(pwmPin, 0);
-
-  xTaskCreatePinnedToCore(switchAndLedTask, "SwLedTask", 2048, NULL, 1, NULL, 1);
-  xTaskCreatePinnedToCore(irRpmTask, "IrRpmTask", 3072, NULL, 2, NULL, 0);
-
-  lastCtlMs = millis();
-
-  Serial.println("Setup complete. Type 'D' to toggle direction.");
-  //Serial.printf("MARKS_PER_REV = %d\n", MARKS_PER_REV);
+  xTaskCreatePinnedToCore(speedControllerTask, "SPEED_CONTROLLER", 4096, (void*)&speedControllerParameters, 1, nullptr, APP_CPU_NUM);
 }
 
 
-// void PIDControllerTask(void *pv){
-//   float targetRPM;
-//   float errorRPM;
-// 
-// 
-// 
-//   for (;;){
-// 
-//   }
-// }
-
 void loop() {
-  bool motorOn   = switchA;
-  bool fastMode  = switchB;
-  int pwmCmd = 0;
+    //if switchA: false-> true: move
+    //if switchB: true-> false: break, stop at correct angle, break, hold.
+    //if switchB true: fast, reference 300
+    //    else switchB false: slow, reference 40.
+    if (switchA){
+        if (switchB){
+            portENTER_CRITICAL(&speedControllerParameters.reference->lock);
+            speedControllerParameters.reference->velocity_reference_x100 = 30000;
+            portEXIT_CRITICAL(&speedControllerParameters.reference->lock);
+            //Serial.println("reference: 200");
 
-  if (!motorOn) {
-    pwmCmd = 0;
-    pi_integrator = 0.0f;
-  } else if (fastMode) {
-    pwmCmd = fastSpeed;
-  } else {
-    uint32_t rpm_x100, fbMs;
-    noInterrupts();
-    rpm_x100 = ir_rpm_x100;
-    fbMs     = ir_fbMillis;
-    interrupts();
-
-    uint32_t nowMs = millis();
-    bool feedbackValid = (rpm_x100 > 0) && ((nowMs - fbMs) <= RPM_TIMEOUT_MS);
-
-    float dt = (nowMs - lastCtlMs) / 1000.0f;
-    if (dt <= 0) dt = 0.001f;
-    lastCtlMs = nowMs;
-
-    int32_t error_x100 = (int32_t)TARGET_RPM_X100 - (int32_t)rpm_x100;
-
-    float P = Kp * (float)error_x100;
-    float candidateIntegrator = pi_integrator;
-
-    if (feedbackValid) {
-      float I_increment = (Ki_per_s * dt) * (float)error_x100;
-      float unsat = P + (pi_integrator + I_increment);
-      bool wouldSaturateHigh = (unsat > SLOW_PWM_MAX) && (error_x100 > 0);
-      bool wouldSaturateLow  = (unsat < SLOW_PWM_MIN) && (error_x100 < 0);
-      if (!(wouldSaturateHigh || wouldSaturateLow)) candidateIntegrator += I_increment;
-    } else candidateIntegrator *= 0.95f;
-
-    if (candidateIntegrator > (float)SLOW_PWM_MAX) candidateIntegrator = (float)SLOW_PWM_MAX;
-    if (candidateIntegrator < (float)(-SLOW_PWM_MAX)) candidateIntegrator = (float)(-SLOW_PWM_MAX);
-    pi_integrator = candidateIntegrator;
-
-    float u = P + pi_integrator;
-
-    if (!feedbackValid)
-      pwmCmd = clamp_int(SLOW_OPEN_LOOP_PWM, SLOW_PWM_MIN, SLOW_PWM_MAX);
-    else {
-      pwmCmd = (int)(u + 0.5f);
-      pwmCmd = clamp_int(pwmCmd, SLOW_PWM_MIN, SLOW_PWM_MAX);
+        } else if (!switchB){
+            portENTER_CRITICAL(&speedControllerParameters.reference->lock);
+            speedControllerParameters.reference->velocity_reference_x100 = 4000;
+            portEXIT_CRITICAL(&speedControllerParameters.reference->lock);
+            //Serial.println("reference: 40");
+           
+        }
     }
-  }
-
-  ledcWrite(pwmPin, pwmCmd);
-
-  if (Serial.available() > 0) {
-    String input = Serial.readStringUntil('\n');
-    input.trim();
-    if (input.equalsIgnoreCase("D")) toggleDirection();
-  }
-
+    else if (!switchA) {
+            portENTER_CRITICAL(&speedControllerParameters.reference->lock);
+            speedControllerParameters.reference->velocity_reference_x100 = 0;
+            portEXIT_CRITICAL(&speedControllerParameters.reference->lock); 
+            //Serial.println("reference: 0");
+                 
+    }
   delay(50);
 }

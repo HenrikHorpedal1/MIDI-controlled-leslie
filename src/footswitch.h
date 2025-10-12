@@ -5,9 +5,6 @@
 extern "C" {            // prevents C++ name mangling when included from .ino/.cpp
 #endif
 
-extern volatile bool switchA;
-extern volatile bool switchB;
-
 void footSwitchTask(void *pvParameters);
 
 #ifdef __cplusplus

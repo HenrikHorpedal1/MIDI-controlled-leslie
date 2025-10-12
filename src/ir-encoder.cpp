@@ -4,7 +4,7 @@
 #define INNER_IR_PIN 4                     // D4 on Nano ESP32 (GPIO4)
 #define OUTER_IR_PIN 16
 
-#define OUTER_MARKS_PER_REV 8               // <<<--- set number of lines on drum here [TUNE]
+#define OUTER_MARKS_PER_REV 16               // <<<--- set number of lines on drum here [TUNE]
 #define INNER_MARKS_PER_REV 1               // <<<--- set number of lines on drum here [TUNE]
 #define RPM_TIMEOUT_MS 3000           // if no edges for this long -> feedback invalid
 
@@ -15,7 +15,10 @@
 
 IrSensor InnerSensor(DEBOUNCE_MAX_US, INNER_IR_PIN, INNER_MARKS_PER_REV);
 IrSensor OuterSensor(DEBOUNCE_MAX_US, OUTER_IR_PIN, OUTER_MARKS_PER_REV);
-Position FusedPosition;
+FusedPosition fusedPosition;
+
+GlobalPosition globalPosition;
+GlobalVelocity globalVelocity;
 
 void IRAM_ATTR onIrEdge(void* pvParameter) {
   uint32_t now = micros();
@@ -40,27 +43,27 @@ void IRAM_ATTR onIrEdge(void* pvParameter) {
   sensor->newestEdgeProcessed = false;
   portEXIT_CRITICAL_ISR(&sensor->lock);
 
-  portENTER_CRITICAL_ISR(&FusedPosition.lock);
+  portENTER_CRITICAL_ISR(&fusedPosition.lock);
   if (sensor == &InnerSensor){
-      FusedPosition.haveSeenInner = true;
-      FusedPosition.resetOnNext = true;
-      portEXIT_CRITICAL_ISR(&FusedPosition.lock);
-      //FusedPosition.outerEdgesSinceInner = 0;
+      fusedPosition.haveSeenInner = true;
+      fusedPosition.resetOnNext = true;
+      portEXIT_CRITICAL_ISR(&fusedPosition.lock);
+      //fusedPosition.outerEdgesSinceInner = 0;
       return;
   } 
   //OuterSensor
-  if (sensor == &OuterSensor && FusedPosition.haveSeenInner == true){
-      if (FusedPosition.resetOnNext){
-        FusedPosition.outerEdgesSinceInner = 0;     
-        FusedPosition.resetOnNext = false;
+  if (sensor == &OuterSensor && fusedPosition.haveSeenInner == true){
+      if (fusedPosition.resetOnNext){
+        fusedPosition.outerEdgesSinceInner = 0;     
+        fusedPosition.resetOnNext = false;
       } else{
-      uint32_t outerEdgesSinceInner = FusedPosition.outerEdgesSinceInner + 1;
+      uint32_t outerEdgesSinceInner = fusedPosition.outerEdgesSinceInner + 1;
       //safety agaist double detections or missdetections, less cycles than using modulo.
       if (outerEdgesSinceInner >= (uint32_t)OuterSensor.marksPerRev) outerEdgesSinceInner = 0; //unsure whether to reset or keep at maximum
-      FusedPosition.outerEdgesSinceInner = outerEdgesSinceInner;
+      fusedPosition.outerEdgesSinceInner = outerEdgesSinceInner;
       }
   }   
-  portEXIT_CRITICAL_ISR(&FusedPosition.lock);
+  portEXIT_CRITICAL_ISR(&fusedPosition.lock);
 }
 
 // Helper: print RPM without floats
@@ -90,10 +93,10 @@ static inline uint32_t clamp_u32(uint32_t v, uint32_t lo, uint32_t hi) {
 }
 
 static void printAngularPosition(){
-    portENTER_CRITICAL(&FusedPosition.lock);
-    int positionIndex = FusedPosition.outerEdgesSinceInner;
-    bool validPosition = FusedPosition.haveSeenInner;
-    portEXIT_CRITICAL(&FusedPosition.lock);
+    portENTER_CRITICAL(&fusedPosition.lock);
+    int positionIndex = fusedPosition.outerEdgesSinceInner;
+    bool validPosition = fusedPosition.haveSeenInner;
+    portEXIT_CRITICAL(&fusedPosition.lock);
 
     if (validPosition){
         float angle = (positionIndex * 360)/OUTER_MARKS_PER_REV;
@@ -111,6 +114,39 @@ void updateDebounceTime(IrSensor* sensor, int32_t lastPeriodUs) {
     portEXIT_CRITICAL(&sensor->lock);
 };
 
+void updateGlobalPosition(){
+    portENTER_CRITICAL(&fusedPosition.lock);
+    int positionIndex = fusedPosition.outerEdgesSinceInner;
+    bool validPosition = fusedPosition.haveSeenInner;
+    portEXIT_CRITICAL(&fusedPosition.lock);
+
+    if (validPosition){
+        float angle = (static_cast<float>(positionIndex) * 360.0f) /
+              static_cast<float>(OUTER_MARKS_PER_REV);        
+        portENTER_CRITICAL(&globalPosition.lock);  
+        globalPosition.position_deg = angle;
+        portEXIT_CRITICAL(&globalPosition.lock);
+    }
+}
+
+void updateGlobalVelocity(uint32_t periodUs, int marksPerRev) {
+  // No valid measurement
+  if (periodUs == 0 || marksPerRev <= 0) {
+    portENTER_CRITICAL(&globalVelocity.lock);  // or a separate spinlock if desired
+    globalVelocity.velocity_rpm_x100 = 0;
+    portEXIT_CRITICAL(&globalVelocity.lock);
+    return;
+  }
+
+  // Compute RPM ×100 (integer math for precision)
+  uint64_t rpm_x100_local = (6000000000ULL / ((uint64_t)periodUs * (uint64_t)marksPerRev));
+
+  // Update shared variable atomically
+  portENTER_CRITICAL(&globalVelocity.lock);  // or a separate spinlock if desired
+  globalVelocity.velocity_rpm_x100 = (uint32_t)rpm_x100_local;
+  portEXIT_CRITICAL(&globalVelocity.lock);
+}
+
 
 enum class State{
     Idle,
@@ -118,6 +154,8 @@ enum class State{
 };
 
 void IrSensorTask(void* pvParameter){
+    //TODO: think about wether globalVelocity only should be updated from the outersensor.
+
 
     IrSensor* sensor = static_cast<IrSensor*>(pvParameter);
     int marksPerRev = sensor->marksPerRev;
@@ -152,8 +190,12 @@ void IrSensorTask(void* pvParameter){
                 //we need two marks in order to get a period
                 if (lastPeriodUs >0){
                     updateDebounceTime(sensor, lastPeriodUs);
+
+                    updateGlobalVelocity(lastPeriodUs, marksPerRev); 
+                    updateGlobalPosition();
+
                     //printRpmLine(passCount,lastPeriodUs, marksPerRev);
-                    printAngularPosition();
+                    //printAngularPosition();
             
                 }
 
@@ -164,8 +206,12 @@ void IrSensorTask(void* pvParameter){
 
                 if (newdata){
                     updateDebounceTime(sensor, lastPeriodUs);
-//                    printRpmLine(passCount,lastPeriodUs, marksPerRev);
-                    printAngularPosition();
+
+                    updateGlobalVelocity(lastPeriodUs, marksPerRev); 
+                    updateGlobalPosition();
+
+                    //printRpmLine(passCount,lastPeriodUs, marksPerRev);
+                    //printAngularPosition();
                 }
 
                 timeout =  
@@ -181,6 +227,9 @@ void IrSensorTask(void* pvParameter){
                     sensor->prevEdgeUs = 0;
                     sensor->debounceUs = DEBOUNCE_MAX_US;
                     portEXIT_CRITICAL(&sensor->lock);
+                    lastPeriodUs = 0;
+                    updateGlobalVelocity(lastPeriodUs, marksPerRev);
+                    
 
                     IrSensorState = State::Idle;
                     break;
