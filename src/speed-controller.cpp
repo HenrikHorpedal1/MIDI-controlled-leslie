@@ -1,45 +1,14 @@
 #include "speed-controller.h"
 #include "ir-encoder.h"
 #include "arduino.h"
+#include "utils.h"
+#include "config.h"
+#include "SD-logger.h"
 
-//#define TARGET_SLOW_RPM_X100 4000          // 40.00 RPM
-//#define TARGET_SLOW_RPM_X100 3000          // 300.00 RPM for now
-
-// Slow-mode input guardrails
-
-//these could be converted to fractions of reference rpm
-//const int   MAX_SLOW_INPUT_PERCENT       = 30;
-//const int   MIN_SLOW_INPUT_PERCENT       = 0;
-//const int   SLOW_OPEN_LOOP_INPUT_PERCENT = 15;
-
-// Fast-mode input guiderails
-//const int   MAX_FAST_INPUT_PERCENT       = 60;
-//const int   MIN_FAST_INPUT_PERCENT       = 0;
-//
-const int MAX_INPUT_PERCENT = 60;
+VelocityPID velPID;
 
 GlobalVelocityReference globalVelocityReference;
-
-// ================= MOTOR PWM & DIRECTION =================
-PID pid;
-const uint32_t MAX_DUTY = (1u << resolution) - 1;
-
 GlobalShouldStop globalShouldStop;
-
-inline uint32_t pct_to_duty(int pct) { if (pct <= 0)  return 0;
-  if (pct >= 100) return MAX_DUTY;
-  // rounded conversion
-  return (uint32_t)((MAX_DUTY * (uint64_t)pct + 50) / 100);
-}
-
-const int MAX_INPUT_PWM = pct_to_duty(MAX_INPUT_PERCENT);
-
-
-int clamp_int(int value, int min_value, int max_value) {
-  if (value < min_value) return min_value;
-  if (value > max_value) return max_value;
-  return value;
-}
 
 void toggleDirection() {
   static bool directionState = false;
@@ -60,6 +29,7 @@ void speedControllerTask(void *pvParameters){
   SpeedControllerParameters* controllerParameters = static_cast<SpeedControllerParameters*>(pvParameters);
 
   uint64_t targetRPMx100;
+  uint64_t lastTargetRPMx100;
   int64_t errorRPMx100;
   uint64_t measuredRPMx100;
   bool stop;
@@ -97,17 +67,63 @@ void speedControllerTask(void *pvParameters){
         nowMs = millis();
         dt = (nowMs - lastInputMs)/1000.0f;
         errorRPMx100 = (int32_t)targetRPMx100 - (int32_t)measuredRPMx100;
-        Serial.println("measurement: " + String(measuredRPMx100) + "reference: " + String(targetRPMx100) + "error: " + String(errorRPMx100));
-        P = pid.Kp*(float)errorRPMx100;
-        I_increment = (float)errorRPMx100 * pid.Ki_per_s * (float)dt;
+        //Serial.println("measurement: " + String(measuredRPMx100) + "reference: " + String(targetRPMx100) + "error: " + String(errorRPMx100));
+        P = velPID.Kp*(float)errorRPMx100;
+
+        //for now, reset Integration-term when the reference is changed. TODO: think of better solution to mitigate windup.
+        if (targetRPMx100 != lastTargetRPMx100) {
+            I = 0.0f;
+        }
+        else{
+            I_increment = (float)errorRPMx100 * velPID.Ki_per_s * (float)dt;
+            I += I_increment;
+        }
+        if (I < 0.0){
+                I= 0.0;}
+
         lastInputMs = nowMs;
-        I += I_increment;
+        lastTargetRPMx100 = targetRPMx100;
         u = P + I;
       }
       pwmCmd = clamp_int(u, 0, MAX_INPUT_PWM);
       ledcWrite(pwmPin, pwmCmd);
       //Serial.println(pwmCmd);
-  
-      vTaskDelay(pdMS_TO_TICKS(5));
+      //plot to seral plotter:
+      unsigned long t_ms = millis();
+      Serial.print("Time:");
+      Serial.print(t_ms); 
+      Serial.print(",");
+      Serial.print("Measurement:");
+      Serial.print(measuredRPMx100); 
+      Serial.print(",");
+      Serial.print("Integration-term:");
+      Serial.print(I); 
+      Serial.print(",");
+      Serial.print("reference:");
+      Serial.print(targetRPMx100);
+      Serial.print(",");
+      Serial.print("input:");
+      Serial.println(u);
+      
+      // --- CSV logging (numeric only) ---
+      String line;
+      line.reserve(80); // avoid reallocations
+
+      line += String(t_ms);
+      line += ',';
+      line += String((long)measuredRPMx100);
+      line += ',';
+      line += String((long)targetRPMx100);
+      line += ',';
+      line += String((double)P, 6);
+      line += ',';
+      line += String((double)I, 6);
+      line += ',';
+      line += String((double)u, 6);
+      line += ',';
+      line += String(pwmCmd);
+
+      logLine(line);
+      vTaskDelay(pdMS_TO_TICKS(10));
   }
 }

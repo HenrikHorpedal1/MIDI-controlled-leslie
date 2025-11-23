@@ -2,7 +2,6 @@
 #pragma once
 #ifndef IR_ENCODER_H
 #define IR_ENCODER_H
-
 #include <Arduino.h>
 
 struct IrSensor;

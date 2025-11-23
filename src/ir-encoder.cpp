@@ -1,17 +1,17 @@
 #include "Arduino.h"
 #include "ir-encoder.h"
-// ================= IR SENSOR (N marks per revolution) =================
-#define INNER_IR_PIN 4                     // D4 on Nano ESP32 (GPIO4)
+
+#define INNER_IR_PIN 4                     // TODO: investigate PIN vs D vs GPIO #
 #define OUTER_IR_PIN 16
 
-#define OUTER_MARKS_PER_REV 16               // <<<--- set number of lines on drum here [TUNE]
-#define INNER_MARKS_PER_REV 1               // <<<--- set number of lines on drum here [TUNE]
-#define RPM_TIMEOUT_MS 3000           // if no edges for this long -> feedback invalid
+#define OUTER_MARKS_PER_REV 16               
+#define INNER_MARKS_PER_REV 1               
+#define RPM_TIMEOUT_MS 2000           
 
 // Adaptive debounce clamps
-#define DEBOUNCE_MIN_US 10000         // lower bound [TUNE]
-#define DEBOUNCE_MAX_US 120000        // upper bound [TUNE]
-#define DEBOUNCE_FRACTION 10
+#define DEBOUNCE_MIN_US 10000    
+#define DEBOUNCE_MAX_US 120000  
+#define DEBOUNCE_FRACTION 3
 
 IrSensor InnerSensor(DEBOUNCE_MAX_US, INNER_IR_PIN, INNER_MARKS_PER_REV);
 IrSensor OuterSensor(DEBOUNCE_MAX_US, OUTER_IR_PIN, OUTER_MARKS_PER_REV);
@@ -133,7 +133,7 @@ void updateGlobalVelocity(uint32_t periodUs, int marksPerRev) {
   // No valid measurement
   if (periodUs == 0 || marksPerRev <= 0) {
     portENTER_CRITICAL(&globalVelocity.lock);  // or a separate spinlock if desired
-    globalVelocity.velocity_rpm_x100 = 0;
+    globalVelocity.velocity_rpm_x100 = 0.0;
     portEXIT_CRITICAL(&globalVelocity.lock);
     return;
   }
@@ -146,7 +146,6 @@ void updateGlobalVelocity(uint32_t periodUs, int marksPerRev) {
   globalVelocity.velocity_rpm_x100 = (uint32_t)rpm_x100_local;
   portEXIT_CRITICAL(&globalVelocity.lock);
 }
-
 
 enum class State{
     Idle,
