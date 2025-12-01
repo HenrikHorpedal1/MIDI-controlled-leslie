@@ -4,7 +4,7 @@
 #include "input_handler.h"
 #include "input_event.h"
 #include "footswitch.h"
-//#include "exp_pedal.h"
+//#include "exp_pedal.h" not implemented
 #include "reference.h"
 #include "midi-listner.h"
 
@@ -24,7 +24,7 @@ static float midiCCToRPM(uint8_t ccVal)
 {
     constexpr float RPM_MAX          = 400.0f;
     constexpr uint8_t CC_MAX         = 127;
-    constexpr uint8_t CC_DEADBAND    = 10;    // 0..10 -> 0 rpm, tweak as desired
+    constexpr uint8_t CC_DEADBAND    = 10;    
 
     if (ccVal <= CC_DEADBAND) {
         return 0.0f;
@@ -53,7 +53,7 @@ static void inputHandlerTask(void *pvParameters)
 
                 case InputSource::Footswitch:
                 {
-                    const FootswitchState &fs = ev.data.foot;   // fs.swA == switchA, fs.swB == switchB
+                    const FootswitchState &fs = ev.data.foot;   
                     //Serial.print("Press at");
                     Serial.println(micros());
 
@@ -122,16 +122,15 @@ void startInputHandler()
 
     // Start drivers, sharing this queue
     footSwitchInit(g_inputQueue);
-    //expPedalInit(g_inputQueue);
-    midiInit(g_inputQueue); // if you have a MIDI driver using InputEvent
+    //expPedalInit(g_inputQueue); not implemented
+    midiInit(g_inputQueue); 
 
-    // Start the input handler task
     xTaskCreate(
         inputHandlerTask,
         "InputHandlerTask",
         4096,
         nullptr,
-        4,          // priority (tweak as needed)
+        4,          // priority 
         nullptr
     );
 }
