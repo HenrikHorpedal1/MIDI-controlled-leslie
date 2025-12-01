@@ -1,15 +1,18 @@
 #include <Arduino.h>
 #include "footswitch.h"
+#include "input_event.h"
 
-#define PIN_A 13
-#define PIN_B 12
-#define PIN_C 14
+#define PIN_A 8
+#define PIN_B 9
+#define PIN_C 7
 
 const TickType_t LED_ON_TIME  = 1;
 const TickType_t LED_OFF_TIME = 9;
 
 volatile bool switchA = false;
 volatile bool switchB = false;
+
+static QueueHandle_t s_inputQueue = nullptr;
 
 static bool readSwitchA() {
     pinMode(PIN_B, OUTPUT);
@@ -74,24 +77,57 @@ static void lightLedB2(){
     pinMode(PIN_B, INPUT);
 }
 
-void footSwitchTask(void *pvParameters) {
+static void footSwitchTask(void *pvParameters)
+{
+    (void)pvParameters;
 
-  for (;;) {
-    switchA = readSwitchA();
-    switchB = readSwitchB();
+    bool lastA = false;
+    bool lastB = false;
 
-    if (switchA) {
-        lightLedA();
-    } else{
-        vTaskDelay(LED_ON_TIME);
+    for (;;)
+    {
+        bool a = readSwitchA();
+        bool b = readSwitchB();
+
+        //notify if there was a change
+        if ((a != lastA || b != lastB) && s_inputQueue != nullptr) {
+            InputEvent ev;
+            ev.source    = InputSource::Footswitch;
+            ev.data.foot = FootswitchState{ a, b };
+
+            xQueueSend(s_inputQueue, &ev, 0);
+        }
+
+        lastA = a;
+        lastB = b;
+
+        // LED control
+        if (a) {
+            lightLedA();
+        } else {
+            vTaskDelay(LED_ON_TIME);
+        }
+
+        if (b) {
+            lightLedB1();
+        } else {
+            lightLedB2();
+        }
+
+        vTaskDelay(LED_OFF_TIME);
     }
-
-    if (switchB) {
-        lightLedB1();
-    } else {
-        lightLedB2();
-    }
-    vTaskDelay(LED_OFF_TIME);
-  }
 }
 
+void footSwitchInit(QueueHandle_t inputQueue)
+{
+    s_inputQueue = inputQueue;
+
+    xTaskCreate(
+        footSwitchTask,
+        "FootswitchTask",
+        4096,
+        nullptr,
+        3,
+        nullptr
+    );
+}

@@ -1,3 +1,4 @@
 #pragma once
+#include <Arduino.h>
 
-void footSwitchTask(void *pvParameters);
+void footSwitchInit(QueueHandle_t inputQueue);
