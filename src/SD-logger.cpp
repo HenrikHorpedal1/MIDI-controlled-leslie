@@ -5,10 +5,10 @@
 #include <SPI.h>
 #include "SD-logger.h"
 
-#define SD_CS   5
-#define SD_SCK  18
-#define SD_MISO 19
-#define SD_MOSI 23
+#define SD_CS   21
+#define SD_SCK  48
+#define SD_MISO 47
+#define SD_MOSI 38
 
 // Single log file for now
 static const char *FILE_NAME = "/log.csv";
