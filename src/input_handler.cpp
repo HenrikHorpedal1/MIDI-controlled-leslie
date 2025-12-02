@@ -117,10 +117,8 @@ static void inputHandlerTask(void *pvParameters)
 
 void startInputHandler()
 {
-    // One queue for all input events from all drivers
     g_inputQueue = xQueueCreate(16, sizeof(InputEvent));
 
-    // Start drivers, sharing this queue
     footSwitchInit(g_inputQueue);
     //expPedalInit(g_inputQueue); not implemented
     midiInit(g_inputQueue); 
