@@ -53,30 +53,30 @@ if not time_s:
 # ------------------------------------------------------
 # Plotting
 # ------------------------------------------------------
-fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+fig, axs = plt.subplots(1, 1, figsize=(10, 8), sharex=True)
 
 # 1) RPMs
-axs[0].plot(time_s, meas_rpm, label="Measured RPM")
-axs[0].plot(time_s, ref_rpm,  label="Target RPM", linestyle="--")
-axs[0].set_ylabel("RPM")
-axs[0].set_title("Speed Controller Log")
-axs[0].grid(True)
-axs[0].legend()
+axs.plot(time_s, meas_rpm, label="Measured RPM")
+axs.plot(time_s, ref_rpm,  label="Target RPM", linestyle="--")
+axs.set_ylabel("RPM")
+axs.set_title("Speed Controller Log")
+axs.grid(True)
+axs.legend()
 
-# 2) Control terms
-axs[1].plot(time_s, P_vals, label="P")
-axs[1].plot(time_s, I_vals, label="I")
-axs[1].plot(time_s, u_vals, label="u (P+I)")
-axs[1].set_ylabel("Control terms")
-axs[1].grid(True)
-axs[1].legend()
-
-# 3) PWM command
-axs[2].plot(time_s, pwm_vals, label="PWM command")
-axs[2].set_xlabel("Time [s]")
-axs[2].set_ylabel("PWM")
-axs[2].grid(True)
-axs[2].legend()
-
+# # 2) Control terms
+# axs[1].plot(time_s, P_vals, label="P")
+# axs[1].plot(time_s, I_vals, label="I")
+# axs[1].plot(time_s, u_vals, label="u (P+I)")
+# axs[1].set_ylabel("Control terms")
+# axs[1].grid(True)
+# axs[1].legend()
+# 
+# # 3) PWM command
+# axs[2].plot(time_s, pwm_vals, label="PWM command")
+# axs[2].set_xlabel("Time [s]")
+# axs[2].set_ylabel("PWM")
+# axs[2].grid(True)
+# axs[2].legend()
+# 
 plt.tight_layout()
 plt.show()
