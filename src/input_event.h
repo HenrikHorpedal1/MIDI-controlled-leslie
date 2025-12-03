@@ -1,11 +1,13 @@
 #pragma once
 
 #include <Arduino.h>
+#include <cstdint>
 
 enum class InputSource : uint8_t {
     Footswitch,
     ExpPedal,
-    Midi
+    MidiButton,
+    MidiCC
 };
 
 struct FootswitchState {
@@ -14,14 +16,17 @@ struct FootswitchState {
 };
 
 struct ExpPedalState {
-    float value01;
-    float angleDeg;
+    float voltage;
 };
 
 struct MidiCCEvent {
-    uint8_t channel;
-    uint8_t controller;
     uint8_t value;
+};
+
+enum class MidiButtonEvent : uint8_t {
+    BUTTON0,
+    BUTTON1,
+    BUTTON2
 };
 
 struct InputEvent {
@@ -29,6 +34,7 @@ struct InputEvent {
     union {
         FootswitchState foot;
         ExpPedalState   exp;
-        MidiCCEvent     midi;
+        MidiCCEvent     midiCC;
+        MidiButtonEvent midiButton;
     } data;
 };

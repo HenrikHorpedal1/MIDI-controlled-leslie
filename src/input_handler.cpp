@@ -93,13 +93,13 @@ static void inputHandlerTask(void *pvParameters)
                     break;
                 }
 
-                case InputSource::Midi:
+                case InputSource::MidiCC:
                 {
                     const MidiCCEvent &m = ev.data.midi;
 
                     // Map CC value to RPM reference:
                     
-                    Serial.print("midi received in input-handler.");
+                    //Serial.print("midi received in input-handler.");
                     ReferenceState r;
                     r.angleDeg      = 0.0f;
                     r.velRPM        = midiCCToRPM(m.value);
@@ -110,6 +110,26 @@ static void inputHandlerTask(void *pvParameters)
                     referenceSetMode(RefSource::Midi);
                     break;
                 }
+
+                case InputSource::MidiButton:
+                {
+                    const MidiCCEvent &m = ev.data.midi;
+
+                    // Map CC value to RPM reference:
+                    
+                    //Serial.print("midi received in input-handler.");
+                    ReferenceState r;
+                    r.angleDeg      = 0.0f;
+                    r.velRPM        = midiCCToRPM(m.value);
+                    r.enabled       = true;
+                    r.valid         = true;
+
+                    referenceSetFrom(RefSource::Midi, r);
+                    referenceSetMode(RefSource::Midi);
+                    break;
+                }
+
+
             }
         }
     }
