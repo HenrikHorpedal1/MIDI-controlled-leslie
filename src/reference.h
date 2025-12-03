@@ -16,13 +16,6 @@ enum class RefSource : uint8_t {
     FootSwitch = 2
 };
 
-struct AllReferences {
-    ReferenceState midi;
-    ReferenceState expPedal;
-    ReferenceState footSwitch;
-    RefSource      activeSource;
-};
-
 void referenceInit();
 
 void referenceSetFrom(RefSource src, const ReferenceState &ref);

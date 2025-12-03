@@ -1,5 +1,12 @@
 #include "reference.h"
 
+struct AllReferences {
+    ReferenceState midi;
+    ReferenceState expPedal;
+    ReferenceState footSwitch;
+    RefSource      activeSource;
+};
+
 static AllReferences g_refs;
 static portMUX_TYPE  refMux = portMUX_INITIALIZER_UNLOCKED;
 
