@@ -1,12 +1,7 @@
 // input_handler.cpp
 #include <Arduino.h>
-
-#include "input_handler.h"
 #include "input_event.h"
-#include "footswitch.h"
-//#include "exp_pedal.h" not implemented
 #include "reference.h"
-#include "midi-listner.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -39,9 +34,9 @@ static float midiCCToRPM(uint8_t ccVal)
     return rpm;
 }
 
-static void inputHandlerTask(void *pvParameters)
+void inputHandlerTask(void *pvParameters)
 {
-    (void)pvParameters;
+    g_inputQueue = static_cast<QueueHandle_t>(pvParameters);
 
     InputEvent ev;
 
@@ -133,22 +128,4 @@ static void inputHandlerTask(void *pvParameters)
             }
         }
     }
-}
-
-void startInputHandler()
-{
-    g_inputQueue = xQueueCreate(16, sizeof(InputEvent));
-
-    footSwitchInit(g_inputQueue);
-    //expPedalInit(g_inputQueue); not implemented
-    midiInit(g_inputQueue); 
-
-    xTaskCreate(
-        inputHandlerTask,
-        "InputHandlerTask",
-        4096,
-        nullptr,
-        4,          // priority 
-        nullptr
-    );
 }

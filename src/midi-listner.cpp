@@ -52,9 +52,10 @@ static void handleIncomingMIDI()
     }
 }
 
-static void midiTask(void *pvParameters)
+void midiListnerTask(void *pvParameters)
 {
-    (void)pvParameters;
+
+    s_inputQueue = static_cast<QueueHandle_t>(pvParameters);
 
     TinyUSBDevice.setManufacturerDescriptor("Leslie MIDI Control");
     TinyUSBDevice.setProductDescriptor("Nano ESP32 USB-MIDI");
@@ -71,16 +72,3 @@ static void midiTask(void *pvParameters)
     }
 }
 
-void midiInit(QueueHandle_t inputQueue)
-{
-    s_inputQueue = inputQueue;
-
-    xTaskCreate(
-        midiTask,
-        "MidiTask",
-        4096,
-        nullptr,
-        3,      // priority: adjust as needed
-        nullptr
-    );
-}

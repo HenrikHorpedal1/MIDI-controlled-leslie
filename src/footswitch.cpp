@@ -77,9 +77,10 @@ static void lightLedB2(){
     pinMode(PIN_B, INPUT);
 }
 
-static void footSwitchTask(void *pvParameters)
+void footSwitchTask(void *pvParameters)
 {
-    (void)pvParameters;
+
+    s_inputQueue = static_cast<QueueHandle_t>(pvParameters);
 
     bool lastA = false;
     bool lastB = false;
@@ -118,16 +119,3 @@ static void footSwitchTask(void *pvParameters)
     }
 }
 
-void footSwitchInit(QueueHandle_t inputQueue)
-{
-    s_inputQueue = inputQueue;
-
-    xTaskCreate(
-        footSwitchTask,
-        "FootswitchTask",
-        4096,
-        nullptr,
-        3,
-        nullptr
-    );
-}
