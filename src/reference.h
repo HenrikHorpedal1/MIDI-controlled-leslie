@@ -6,14 +6,13 @@
 struct ReferenceState {
     float angleDeg;      
     float velRPM;  
-    bool  enabled;       
-    bool  valid;         
 };
 
 enum class RefSource : uint8_t {
-    Midi       = 0,
-    ExpPedal   = 1,
-    FootSwitch = 2
+    Footswitch = 0,
+    ExpPedal,
+    MidiButton,
+    MidiCC
 };
 
 void referenceInit();

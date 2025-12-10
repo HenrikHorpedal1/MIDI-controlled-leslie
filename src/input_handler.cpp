@@ -2,11 +2,11 @@
 #include <Arduino.h>
 #include "input_event.h"
 #include "reference.h"
+#include "ramp-trajectory.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
-
 
 constexpr float CHORALE_RPM = 40.0f;
 constexpr float TREMOLO_RPM = 400.0f;
@@ -50,35 +50,27 @@ void inputHandlerTask(void *pvParameters)
                 {
                     const FootswitchState &fs = ev.data.foot;   
                     //Serial.print("Press at");
-                    Serial.println(micros());
-
-
-                    ReferenceState ref{};
-                    ref.angleDeg = 0.0f;   // not used here
-                    ref.enabled  = true;
-                    ref.valid    = true;
+                    //Serial.println(micros());
 
                     if (fs.swA)
                     {
                         // A pressed → choose speed based on B
                         if (fs.swB)
                         {
-                            ref.velRPM = TREMOLO_RPM;
+                            rampTrajectoryCommand(SpeedCommand::TREMOLO, RefSource::Footswitch);
                         }
                         else if (!fs.swB)
                         {
-                            ref.velRPM = CHORALE_RPM;
+                            rampTrajectoryCommand(SpeedCommand::CHORALE, RefSource::Footswitch);
                         }
                     }
-                    else  // !fs.swA
+                    else  // !fs.swA -> stop
                     {
-                        // A not pressed → stop
-                        ref.velRPM = 0.0f;
+                        rampTrajectoryCommand(SpeedCommand::STOP,RefSource::Footswitch);
                     }
 
-                    referenceSetFrom(RefSource::FootSwitch, ref);
-                    referenceSetMode(RefSource::FootSwitch);
-                    Serial.println("Set reference from foot switch.");
+                    referenceSetMode(RefSource::Footswitch);
+                    //Serial.println("Set reference from foot switch.");
                     break;
                 }
 
@@ -90,7 +82,7 @@ void inputHandlerTask(void *pvParameters)
 
                 case InputSource::MidiCC:
                 {
-                    const MidiCCEvent &m = ev.data.midi;
+                    const MidiCCEvent &m = ev.data.midiCC;
 
                     // Map CC value to RPM reference:
                     
@@ -98,33 +90,22 @@ void inputHandlerTask(void *pvParameters)
                     ReferenceState r;
                     r.angleDeg      = 0.0f;
                     r.velRPM        = midiCCToRPM(m.value);
-                    r.enabled       = true;
-                    r.valid         = true;
 
-                    referenceSetFrom(RefSource::Midi, r);
-                    referenceSetMode(RefSource::Midi);
+                    referenceSetFrom(RefSource::MidiCC, r);
+                    referenceSetMode(RefSource::MidiCC);
                     break;
                 }
 
                 case InputSource::MidiButton:
                 {
-                    const MidiCCEvent &m = ev.data.midi;
-
-                    // Map CC value to RPM reference:
-                    
-                    //Serial.print("midi received in input-handler.");
-                    ReferenceState r;
-                    r.angleDeg      = 0.0f;
-                    r.velRPM        = midiCCToRPM(m.value);
-                    r.enabled       = true;
-                    r.valid         = true;
-
-                    referenceSetFrom(RefSource::Midi, r);
-                    referenceSetMode(RefSource::Midi);
+                    switch (ev.data.midiButton) {
+                            case MidiButtonEvent::BUTTON0: rampTrajectoryCommand(SpeedCommand::CHORALE, RefSource::MidiButton); break;
+                            case MidiButtonEvent::BUTTON1: rampTrajectoryCommand(SpeedCommand::STOP,RefSource::MidiButton);    break;
+                            case MidiButtonEvent::BUTTON2: rampTrajectoryCommand(SpeedCommand::TREMOLO,RefSource::MidiButton); break;
+                        }
+                    referenceSetMode(RefSource::MidiButton);
                     break;
                 }
-
-
             }
         }
     }

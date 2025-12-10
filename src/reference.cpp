@@ -1,9 +1,10 @@
 #include "reference.h"
 
 struct AllReferences {
-    ReferenceState midi;
+    ReferenceState midiCC;
+    ReferenceState midiButton;
     ReferenceState expPedal;
-    ReferenceState footSwitch;
+    ReferenceState footswitch;
     RefSource      activeSource;
 };
 
@@ -13,10 +14,11 @@ static portMUX_TYPE  refMux = portMUX_INITIALIZER_UNLOCKED;
 void referenceInit()
 {
     portENTER_CRITICAL(&refMux);
-    g_refs.midi       = { 0.0f, 0.0f, false, false };
-    g_refs.expPedal   = { 0.0f, 0.0f, false, false };
-    g_refs.footSwitch = { 0.0f, 0.0f, false, false };
-    g_refs.activeSource = RefSource::Midi;  // default
+    g_refs.midiCC       = { 0.0f, 0.0f };
+    g_refs.midiButton   = { 0.0f, 0.0f };
+    g_refs.expPedal     = { 0.0f, 0.0f };
+    g_refs.footswitch   = { 0.0f, 0.0f };
+    g_refs.activeSource = RefSource::Footswitch;  // default
     portEXIT_CRITICAL(&refMux);
 }
 
@@ -24,9 +26,10 @@ void referenceSetFrom(RefSource src, const ReferenceState &ref)
 {
     portENTER_CRITICAL(&refMux);
     switch (src) {
-        case RefSource::Midi:       g_refs.midi       = ref; break;
+        case RefSource::MidiCC:     g_refs.midiCC     = ref; break;
+        case RefSource::MidiButton: g_refs.midiButton = ref; break;
         case RefSource::ExpPedal:   g_refs.expPedal   = ref; break;
-        case RefSource::FootSwitch: g_refs.footSwitch = ref; break;
+        case RefSource::Footswitch: g_refs.footswitch = ref; break;
     }
     portEXIT_CRITICAL(&refMux);
 }
@@ -53,9 +56,10 @@ void referenceGetActive(ReferenceState &out)
     ReferenceState chosen;
 
     switch (mode) {
-        case RefSource::Midi:       chosen = g_refs.midi;       break;
+        case RefSource::MidiCC:     chosen = g_refs.midiCC;     break;
+        case RefSource::MidiButton: chosen = g_refs.midiButton; break;
         case RefSource::ExpPedal:   chosen = g_refs.expPedal;   break;
-        case RefSource::FootSwitch: chosen = g_refs.footSwitch; break;
+        case RefSource::Footswitch: chosen = g_refs.footswitch; break;
     }
 
     portEXIT_CRITICAL(&refMux);

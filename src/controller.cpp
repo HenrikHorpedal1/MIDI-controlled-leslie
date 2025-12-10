@@ -73,7 +73,7 @@ static ControlMode selectControlMode(const EncoderState   &enc,
     }
 
     // 2) Homed, but something is “not ready” - just go to zero position.
-    if (!ref.valid || !ref.enabled || !vel.valid) {
+    if (!vel.valid) {
         return ControlMode::Position;
     }
 

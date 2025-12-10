@@ -1,3 +1,8 @@
+#pragma once
+
+#include "reference.h"
+#include <Arduino.h>
+#include <cstdint>
 
 enum class SpeedCommand : uint8_t {
     CHORALE,
@@ -5,5 +10,6 @@ enum class SpeedCommand : uint8_t {
     TREMOLO
 };
 
-
-void rampTrajectoryCommand(SpeedCommand cmd);
+void rampTrajectoryInit();
+void rampTrajectoryStartTask(UBaseType_t priority = 3);
+void rampTrajectoryCommand(SpeedCommand cmd, RefSource src);

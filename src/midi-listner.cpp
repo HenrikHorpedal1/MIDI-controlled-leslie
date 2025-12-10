@@ -8,12 +8,29 @@
 #include "input_event.h"
 
 static constexpr uint8_t MIDI_TARGET_CHANNEL = 1;
-static constexpr uint8_t MIDI_TARGET_CC = 7;   // example: CC7 (volume)
+static constexpr uint8_t MIDI_TARGET_CC = 7; 
+static constexpr uint8_t PAD_CHANNEL   = 10;  
+static constexpr uint8_t PAD_NOTE_E1   = 28;
+static constexpr uint8_t PAD_NOTE_F1   = 29;
+static constexpr uint8_t PAD_NOTE_FS1  = 30;
+
 
 static Adafruit_USBD_MIDI usb_midi;
 static MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI);
 
 static QueueHandle_t s_inputQueue = nullptr;
+
+static inline bool isPadNote(uint8_t n) {
+    return n == PAD_NOTE_E1 || n == PAD_NOTE_F1 || n == PAD_NOTE_FS1;
+}
+
+static MidiButtonEvent noteToButton(uint8_t note){
+    if (note == PAD_NOTE_E1)  return MidiButtonEvent::BUTTON0;
+    if (note == PAD_NOTE_F1)  return MidiButtonEvent::BUTTON1;
+    if (note == PAD_NOTE_FS1) return MidiButtonEvent::BUTTON2;
+
+    return MidiButtonEvent::BUTTON0;
+}
 
 static void handleIncomingMIDI()
 {
@@ -28,27 +45,28 @@ static void handleIncomingMIDI()
         uint8_t d1 = MIDI.getData1();
         uint8_t d2 = MIDI.getData2();
 
-        if (type != midi::ControlChange) {
-            continue;
+        bool haveEvent = false;
+        InputEvent ev{};
+
+        if (type == midi::ControlChange &&
+            ch == MIDI_TARGET_CHANNEL &&
+            d1 == MIDI_TARGET_CC) {
+
+            ev.source = InputSource::MidiCC;
+            ev.data.midiCC.value = d2;   // CC value 0..127
+            haveEvent = true;
+        }
+        else if ((type == midi::NoteOn || type == midi::NoteOff) &&
+                 ch == PAD_CHANNEL && isPadNote(d1)) {
+
+            ev.source = InputSource::MidiButton;
+            ev.data.midiButton = noteToButton(d1);
+            haveEvent = true;
         }
 
-        if (ch != MIDI_TARGET_CHANNEL) {
-            continue;
-        }
-
-        if (MIDI_TARGET_CC != 0xFF && d1 != MIDI_TARGET_CC) {
-            continue;
-        }
-
-        if (s_inputQueue != nullptr) {
-            InputEvent ev;
-            ev.source              = InputSource::Midi;
-            ev.data.midi.channel    = ch;
-            ev.data.midi.controller = d1;   // CC number
-            ev.data.midi.value      = d2;   // CC value 0..127
-            
+        if (haveEvent && s_inputQueue) {
             xQueueSend(s_inputQueue, &ev, 0);
-        }
+        }    
     }
 }
 
@@ -71,4 +89,3 @@ void midiListnerTask(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
-
