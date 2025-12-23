@@ -1,104 +1,136 @@
 #include "velocity.h"
 #include "quadrature-encoder.h"
 
-static float s_countsPerRev = 32.0f;        
-static const uint32_t VEL_TIMEOUT_US = 200000; // 2.0s
+static constexpr float    COUNTS_PER_REV   = 32.0f;   // must match CPR in encoder
+static constexpr uint32_t VEL_TIMEOUT_MS   = 500;     // "no steps for 200ms" => stopped
+static constexpr float    VEL_FILTER_ALPHA = 1.0;    // IIR low-pass factor (0..1)
 
-static VelocityState g_vel = {0.0f, 0.0f, false};
+struct VelEvent {
+    int8_t   stepDir;   // +1 / -1
+    uint32_t tsMicros;  // micros() timestamp of the step edge
+};
 
-static int32_t  s_lastCount      = 0;
-static uint32_t s_lastEdgeMicros = 0;
-static bool     s_firstSample    = true;
+static QueueHandle_t  s_velQueue      = nullptr;
+static VelocityState  s_velState      = {0.0f, 0.0f, false};
+static uint32_t       s_lastEdgeUs    = 0;
+static bool           s_havePrevEdge  = false;
 
-static portMUX_TYPE velMux = portMUX_INITIALIZER_UNLOCKED;
+static portMUX_TYPE   s_velMux = portMUX_INITIALIZER_UNLOCKED;
+static TaskHandle_t   s_velTaskHandle = nullptr;
 
 void velocityInit()
 {
-    uint32_t nowUs = micros();
+    s_velQueue = xQueueCreate(16, sizeof(VelEvent));
 
-    portENTER_CRITICAL(&velMux);
-    g_vel.velCountsPerSec = 0.0f;
-    g_vel.velRpm          = 0.0f;
-    g_vel.valid           = false;
-    s_lastCount           = 0;
-    s_lastEdgeMicros      = nowUs;
-    s_firstSample         = true;
-    portEXIT_CRITICAL(&velMux);
-}
-
-void velocityUpdate()
-{
-    EncoderState enc;
-    getEncoderState(enc);
-
-    uint32_t nowUs = micros();
-
-    // Local copies 
-    int32_t  lastCount;
-    uint32_t lastEdge;
-    bool     first;
-
-    portENTER_CRITICAL(&velMux);
-    lastCount = s_lastCount;
-    lastEdge  = s_lastEdgeMicros;
-    first     = s_firstSample;
-    portEXIT_CRITICAL(&velMux);
-
-    if (first) {
-        // Initialize on first call
-        portENTER_CRITICAL(&velMux);
-        s_firstSample      = false;
-        s_lastCount        = enc.count;
-        s_lastEdgeMicros   = nowUs;
-        g_vel.velCountsPerSec = 0.0f;
-        g_vel.velRpm          = 0.0f;
-        g_vel.valid           = false;
-        portEXIT_CRITICAL(&velMux);
+    if (s_velQueue == nullptr) {
+        Serial.println("velocityInit: failed to create queue");
         return;
     }
 
-    VelocityState newVel;
+    BaseType_t ok = xTaskCreate(
+        velocityTask,
+        "velocityTask",
+        2048,
+        nullptr,
+        2,   // priority
+        &s_velTaskHandle
+    );
 
-    if (enc.count != lastCount) {
-        int32_t  dCount = enc.count - lastCount;
-        uint32_t dtUs   = nowUs - lastEdge;
-
-        if (dtUs > 0) {
-            float dt  = dtUs * 1e-6f;                       // seconds
-            float cps = static_cast<float>(dCount) / dt;    // counts per second
-
-            newVel.velCountsPerSec = cps;
-
-            float revPerSec = cps / s_countsPerRev;
-            newVel.velRpm   = revPerSec * 60.0f;
-
-            newVel.valid    = enc.homed;
-        } else {
-            // dtUs == 0 
-            newVel = g_vel;
-        }
-
-        portENTER_CRITICAL(&velMux);
-        g_vel            = newVel;
-        s_lastCount      = enc.count;
-        s_lastEdgeMicros = nowUs;
-        portEXIT_CRITICAL(&velMux);
-    } else {
-        // timeout to zero
-        uint32_t ageUs = nowUs - lastEdge;
-        if (ageUs > VEL_TIMEOUT_US) {
-            portENTER_CRITICAL(&velMux);
-            g_vel.velCountsPerSec = 0.0f;
-            g_vel.velRpm          = 0.0f;
-            g_vel.valid           = enc.homed;
-            portEXIT_CRITICAL(&velMux);
-        }
+    if (ok != pdPASS) {
+        Serial.println("velocityInit: failed to create task");
+        s_velTaskHandle = nullptr;
     }
+}
+
+// Called from encoderTask context (NOT ISR).
+void velocityPushStep(int8_t stepDir, uint32_t edgeMicros)
+{
+    if (s_velQueue == nullptr) {
+        return;
+    }
+
+    VelEvent evt;
+    evt.stepDir  = stepDir;
+    evt.tsMicros = edgeMicros;
+
+    // Don't block encoderTask; drop event if queue is full
+    xQueueSend(s_velQueue, &evt, 0);
 }
 
 void velocityGetState(VelocityState &out)
 {
-    portENTER_CRITICAL(&velMux);
-    out = g_vel;
-    portEXIT_CRITICAL(&velMux);
+    portENTER_CRITICAL(&s_velMux);
+    out = s_velState;
+    portEXIT_CRITICAL(&s_velMux);
+}
+
+// The velocity task: blocks on step events OR timeout.
+void velocityTask(void *pvParameters)
+{
+    (void)pvParameters;
+    Serial.println("Velocity task started");
+
+    const TickType_t timeoutTicks = pdMS_TO_TICKS(VEL_TIMEOUT_MS);
+
+    for (;;)
+    {
+        VelEvent evt;
+        bool gotEvent = (xQueueReceive(s_velQueue, &evt, timeoutTicks) == pdTRUE);
+
+        if (gotEvent) {
+
+            // First edge: initialise timestamp, but no velocity yet
+            if (!s_havePrevEdge) {
+                s_lastEdgeUs   = evt.tsMicros;
+                s_havePrevEdge = true;
+                continue;
+            }
+
+            uint32_t dtUs = evt.tsMicros - s_lastEdgeUs;
+            if (dtUs == 0) {
+                // micros() resolution edge case
+                continue;
+            }
+
+            s_lastEdgeUs = evt.tsMicros;
+            float dt     = dtUs * 1e-6f;                        // seconds
+            float cpsInst = static_cast<float>(evt.stepDir) / dt; // counts/s
+
+            // Get homing state so we can set validity
+            EncoderState enc;
+            getEncoderState(enc);
+
+            portENTER_CRITICAL(&s_velMux);
+
+            float cpsPrev = s_velState.velCountsPerSec;
+            float cpsFilt;
+
+            if (!s_velState.valid) {
+                // First real velocity sample
+                cpsFilt = cpsInst;
+            } else {
+                // First-order IIR low-pass filter
+                cpsFilt = cpsPrev + VEL_FILTER_ALPHA * (cpsInst - cpsPrev);
+            }
+
+            s_velState.velCountsPerSec = cpsFilt;
+            s_velState.velRpm          = (cpsFilt / COUNTS_PER_REV) * 60.0f;
+            s_velState.valid           = enc.homed;   // only "valid" once homed
+
+            portEXIT_CRITICAL(&s_velMux);
+        } else {
+            // Timeout: we haven't seen any step for VEL_TIMEOUT_MS
+            EncoderState enc;
+            getEncoderState(enc);
+
+            portENTER_CRITICAL(&s_velMux);
+            s_velState.velCountsPerSec = 0.0f;
+            s_velState.velRpm          = 0.0f;
+            s_velState.valid           = enc.homed;   // still only valid if homed
+            portEXIT_CRITICAL(&s_velMux);
+
+            // You *could* also reset s_havePrevEdge here if you want
+            // the next step to re-initialize period estimation.
+        }
+    }
 }

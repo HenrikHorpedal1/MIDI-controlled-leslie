@@ -1,4 +1,5 @@
 #include "quadrature-encoder.h"
+#include "velocity.h"
 #include <math.h>
 
 static const uint8_t PIN_A = 10;   
@@ -9,7 +10,12 @@ constexpr float CPR = 32;
 
 static const uint8_t ENC_BUF_SIZE = 32;
 
-volatile uint8_t encBuf[ENC_BUF_SIZE];
+struct EncSample {
+    uint8_t  transition;
+    uint32_t ts;          // micros() at edge
+};
+
+volatile EncSample encBuf[ENC_BUF_SIZE];
 volatile uint8_t encHead = 0;
 volatile uint8_t encTail = 0;
 
@@ -26,8 +32,23 @@ EncoderState encoderState = {0, 0.0f, 0.0f, false};
 
 void encoderTask(void *pvParameters);
 
+
+static inline bool hasHomed(uint8_t idx, int8_t lastDir)
+{
+    bool oldA = (idx >> 3) & 0x01;
+    bool newA = (idx >> 1) & 0x01;
+
+    bool aRising  = (!oldA &&  newA);
+    bool aFalling = ( oldA && !newA);
+
+    return (lastDir > 0 && aFalling) || (lastDir < 0 && aRising);
+}
+
 void IRAM_ATTR onABEdge()
 {
+
+    uint32_t now = micros();
+
     static uint8_t lastAB = 0;
 
     uint8_t a = digitalRead(PIN_A) ? 1 : 0;
@@ -37,13 +58,15 @@ void IRAM_ATTR onABEdge()
     uint8_t transition = ((lastAB & 0x03) << 2) | ab; // oldAB(2) | newAB(2)
     lastAB = ab;
 
+
     BaseType_t hpTaskWoken = pdFALSE;
 
     portENTER_CRITICAL_ISR(&encoderMux);
     uint8_t head = encHead;
     uint8_t nextHead = (head + 1) & (ENC_BUF_SIZE - 1);
     if (nextHead != encTail) {
-        encBuf[head] = transition;
+        encBuf[head].transition = transition;
+        encBuf[head].ts         = now;
         encHead = nextHead;
     }
 
@@ -73,19 +96,19 @@ void encoderTask(void *pvParameters)
 {
     (void) pvParameters;
 
-    static const int8_t TRANS[16] = {
+    static const int8_t TransitionTable[16] = {
          0, -1,  1, 14,
          1,  0, 14, -1,
         -1, 14,  0,  1,
         14,  1, -1,  0
     };
 
-    static int lrsum = 0;
+    static int accumulator = 0;
 
     bool     homed         = false;
-    bool     zAlignPending = false;  
-    int8_t   lastDir       = 0;      
-    int32_t  zeroOffset    = 0;      
+    bool     zAlignPending = false;
+    int8_t   lastDir       = 0;
+    int32_t  zeroOffset    = 0;
 
     Serial.println("Encoder task started");
 
@@ -107,7 +130,8 @@ void encoderTask(void *pvParameters)
 
         while (true)
         {
-            uint8_t tail, head, idx;
+            uint8_t tail, head;
+            EncSample sample;
 
             portENTER_CRITICAL(&encoderMux);
             tail = encTail;
@@ -119,57 +143,42 @@ void encoderTask(void *pvParameters)
                 break;
             }
 
-            idx = encBuf[tail];
+            sample.transition = encBuf[tail].transition;
+            sample.ts         = encBuf[tail].ts;
+
             encTail = (tail + 1) & (ENC_BUF_SIZE - 1);
             portEXIT_CRITICAL(&encoderMux);
 
-            uint8_t oldAB = (idx >> 2) & 0x03;
-            uint8_t newAB =  idx       & 0x03;
+            uint8_t idx = sample.transition;
 
-            lrsum += TRANS[idx];
+            accumulator += TransitionTable[idx];
 
             int8_t stepDir = 0;
-            if (lrsum % 4 == 0) {
-                if (lrsum == 4) {
-                    lrsum = 0;
+            if (accumulator % 4 == 0) {
+                if (accumulator == 4) {
+                    accumulator = 0;
                     encoderCount++;
                     stepDir = +1;
-                } else if (lrsum == -4) {
-                    lrsum = 0;
+                } else if (accumulator == -4) {
+                    accumulator = 0;
                     encoderCount--;
                     stepDir = -1;
                 } else {
-                    lrsum = 0; // invalid sequence
+                    accumulator = 0; // invalid sequence
                 }
             }
 
             if (stepDir != 0) {
+                velocityPushStep(stepDir, sample.ts);  // sample.ts is the edge timestamp
                 lastDir = stepDir;
             }
 
-            // --- A-edge alignment for precise Z homing ---
-            //   trailing edge: falling if dir+, rising if dir-
+            // Z alignment (A-edge) homing
             if (zAlignPending && lastDir != 0) {
-                bool oldA = (oldAB >> 1) & 0x01;
-                bool newA = (newAB >> 1) & 0x01;
-                bool aRising  = (!oldA &&  newA);
-                bool aFalling = ( oldA && !newA);
-
-                bool hitAlignEdge = false;
-
-                // A trailing:
-                if ((lastDir > 0 && aFalling) ||
-                    (lastDir < 0 && aRising)) {
-                    hitAlignEdge = true;
-                }
-
-                if (hitAlignEdge) {
+                if (hasHomed(idx, lastDir)) {
                     zeroOffset    = encoderCount;
                     homed         = true;
                     zAlignPending = false;
-
-                    Serial.print("Homed at count = ");
-                    Serial.println(zeroOffset);
                 }
             }
         }

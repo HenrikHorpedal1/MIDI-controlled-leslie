@@ -10,9 +10,9 @@
 static constexpr uint8_t MIDI_TARGET_CHANNEL = 1;
 static constexpr uint8_t MIDI_TARGET_CC = 7; 
 static constexpr uint8_t PAD_CHANNEL   = 10;  
-static constexpr uint8_t PAD_NOTE_E1   = 28;
-static constexpr uint8_t PAD_NOTE_F1   = 29;
-static constexpr uint8_t PAD_NOTE_FS1  = 30;
+static constexpr uint8_t PAD_NOTE_E1   = 40;
+static constexpr uint8_t PAD_NOTE_F1   = 41;
+static constexpr uint8_t PAD_NOTE_FS1  = 42;
 
 
 static Adafruit_USBD_MIDI usb_midi;
@@ -55,6 +55,7 @@ static void handleIncomingMIDI()
             ev.source = InputSource::MidiCC;
             ev.data.midiCC.value = d2;   // CC value 0..127
             haveEvent = true;
+            Serial.println("CC");
         }
         else if ((type == midi::NoteOn || type == midi::NoteOff) &&
                  ch == PAD_CHANNEL && isPadNote(d1)) {
@@ -62,6 +63,7 @@ static void handleIncomingMIDI()
             ev.source = InputSource::MidiButton;
             ev.data.midiButton = noteToButton(d1);
             haveEvent = true;
+            Serial.println("Button");
         }
 
         if (haveEvent && s_inputQueue) {
@@ -81,6 +83,7 @@ void midiListnerTask(void *pvParameters)
     MIDI.begin(MIDI_CHANNEL_OMNI);
     MIDI.turnThruOff();
 
+    Serial.println("starting midi task");
     for (;;)
     {
         if (TinyUSBDevice.mounted() && tud_ready()) {

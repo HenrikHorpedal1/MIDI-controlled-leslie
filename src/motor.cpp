@@ -37,13 +37,12 @@ Direction currentDirection = Direction::Forward;
 void applyDirection(Direction dir) {
   currentDirection = dir;
 
+  pinMode(dirPin, OUTPUT);
+
   if (dir == Direction::Forward) {
-    pinMode(dirPin, OUTPUT);
-    digitalWrite(dirPin, LOW);
-    Serial.println("Direction: FORWARD (LOW)");
+    digitalWrite(dirPin, HIGH);  // transistor ON -> DIR LOW
   } else {
-    pinMode(dirPin, INPUT_PULLUP);
-    Serial.println("Direction: REVERSE (HIGH)");
+    digitalWrite(dirPin, LOW);   // transistor OFF -> DIR HIGH (released)
   }
 }
 

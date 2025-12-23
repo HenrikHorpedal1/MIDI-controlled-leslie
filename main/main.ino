@@ -5,55 +5,62 @@
 #include "input_handler.h"
 #include "input_event.h"
 #include "reference.h"
+#include "ramp-trajectory.h"
 #include "controller.h"
 #include "motor.h"
+#include "sd_logger.h"
 
 static QueueHandle_t g_inputQueue = nullptr;
 
 void setup() {
     Serial.begin(115200);
 
-    encoderInit();       // whatever your encoder init is called
-    velocityInit();      // with CPR if needed
-    motorInit(); // set pins and 
-    referenceInit(); //securely start with zeros for all references
+    encoderInit();
+    velocityInit();
+    motorInit();
+    referenceInit();
+    rampTrajectoryInit();
 
     // Initialize Input queue and pass to publishers and subscribers
     g_inputQueue = xQueueCreate(16, sizeof(InputEvent));
-    //footswitch
+
     xTaskCreate(
         footSwitchTask,
         "footSwitchTask",
         4096,
         g_inputQueue, //parameter
-        3,      // priority, tune as needed
+        3,      // priority
         nullptr
     );
-    //midi listner
+
     xTaskCreate(
         midiListnerTask,
         "midiListnerTask",
         4096,
         g_inputQueue,
-        3,      // priority, tune as needed
+        3,      // priority
         nullptr
     );
-    //input handler
+
     xTaskCreate(
         inputHandlerTask,
         "inputHandlerTask",
         4096,
         g_inputQueue,
-        4,      // priority, tune as needed
+        4,      // priority
         nullptr
     );
+
+    rampTrajectoryStartTask(3);
+
+    sdLoggerBegin();
     
     xTaskCreate(
         controllerTask,
         "ControllerTask",
         4096,
         nullptr,
-        5,      // priority, tune as needed
+        5,      // priority
         nullptr
     );
 }

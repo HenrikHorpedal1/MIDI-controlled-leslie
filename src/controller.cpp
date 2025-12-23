@@ -9,31 +9,33 @@
 #include "reference.h"
 #include "motor.h"
 
+
+#include "sd_logger.h"
+
 // Control loop period
 static constexpr float      CTRL_DT_S          = 0.001f;          // 1 kHz
 static constexpr TickType_t CTRL_PERIOD_TICKS  = pdMS_TO_TICKS(1);
 
 // Unit conversions
 static constexpr float DEG_PER_SEC_PER_RPM = 360.0f / 60.0f;      // 6.0
-static constexpr float VEL_THRESH_RPM      = 30.0f;
-static constexpr float VEL_THRESH_DEG_S    = VEL_THRESH_RPM * DEG_PER_SEC_PER_RPM; // 180 deg/s
+static constexpr float VEL_THRESH_RPM      = 15.0f;
+//static constexpr float VEL_THRESH_DEG_S    = VEL_THRESH_RPM * DEG_PER_SEC_PER_RPM; // 180 deg/s
 
 // “Zero” velocity reference threshold (deg/s)
-static constexpr float VEL_REF_ZERO_EPS_DEG_S = 1.0f;             // ~0.17 rpm
+static constexpr float VEL_REF_ZERO_THRES_RPM = 10.0f;             // ~0.17 rpm
 
 // Homing open-loop speed (normalized, -1..1)
 static constexpr float HOMING_U = 0.14f;                           // ~10% of MAX_INPUT_PWM
 
 static constexpr float VEL_KP = 0.01f;
-static constexpr float VEL_KI = 0.0f;
+static constexpr float VEL_KI = 0.005f;
 
-static constexpr float POS_KP = 0.0005f;
-static constexpr float POS_KI = 0.0000f;
-static constexpr float POS_KD = 0.0000f;
+static constexpr float POS_KP = 0.00000001f;
+static constexpr float POS_KD = 0.00000000001f;
 
-static constexpr float U_STATIC_FWD = 0.140f;    // forward direction
-static constexpr float U_STATIC_REV = 0.090f;    // reverse direction
-static constexpr float POS_FF_DEADBAND_DEG = 11.25f;
+static constexpr float U_STATIC_FWD = 0.070f;    // forward direction
+static constexpr float U_STATIC_REV = 0.070f;    // reverse direction
+static constexpr float POS_FF_DEADBAND_DEG = 22.5f;
 
 // Integrator clamp
 static constexpr float INTEGRATOR_MAX = U_STATIC_FWD;
@@ -63,6 +65,16 @@ enum class ControlMode : uint8_t {
     Position
 };
 
+static const char* controlModeToString(ControlMode mode)
+{
+    switch (mode) {
+        case ControlMode::Homing:   return "Homing";
+        case ControlMode::Velocity: return "Velocity";
+        case ControlMode::Position: return "Position";
+        default:                    return "Unknown";
+    }
+}
+
 static ControlMode selectControlMode(const EncoderState   &enc,
                                      const VelocityState  &vel,
                                      const ReferenceState &ref)
@@ -77,12 +89,8 @@ static ControlMode selectControlMode(const EncoderState   &enc,
         return ControlMode::Position;
     }
 
-    // 3) Normal homed operation: choose between velocity and position
-    const float vRef_deg_s  = ref.velRPM;
-    const float vMeas_deg_s = vel.velRpm;
-
-    const bool refIsZero  = fabsf(vRef_deg_s)  < VEL_REF_ZERO_EPS_DEG_S;
-    const bool speedIsLow = fabsf(vMeas_deg_s) < VEL_THRESH_DEG_S;
+    const bool refIsZero  = fabsf(ref.velRPM)  < VEL_REF_ZERO_THRES_RPM;
+    const bool speedIsLow = fabsf(vel.velRpm) < VEL_THRESH_RPM;
 
     if (!refIsZero) {
         return ControlMode::Velocity;
@@ -137,18 +145,23 @@ void controllerTask(void *pvParameters)
 
     TickType_t lastWakeTime = xTaskGetTickCount();
 
+    uint32_t   loopCounter  = 0;
+
     for (;;)
     {
         vTaskDelayUntil(&lastWakeTime, CTRL_PERIOD_TICKS);
 
         getEncoderState(enc);
-        velocityUpdate();
         velocityGetState(vel);
         referenceGetActive(ref);
 
         ControlMode mode = selectControlMode(enc, vel, ref);
 
         float u = 0.0f;
+        float e = 0.0f;
+        float P = 0.0f;
+        float I = 0.0f;
+        float D = 0.0f;
 
         switch (mode)
         {
@@ -167,9 +180,10 @@ void controllerTask(void *pvParameters)
 
                 float e = ref.velRPM - vel.velRpm; 
                 float P = VEL_KP * e;
-                float I = 0.0;
-                float D = 0.0;
-                float u_pi = P;
+                velInt += e * CTRL_DT_S;
+                float D = 0.0f;
+                float I = velInt*VEL_KI;
+                float u_pi = P + I;
 
                 float u_ff = 0.0f;
 
@@ -203,23 +217,22 @@ void controllerTask(void *pvParameters)
                 e = wrapAngleErrorDeg(e);
                 float P = POS_KP * e;
 
-                posInt += e * CTRL_DT_S;
-                float I = posInt * POS_KI;
-                I = clampFloat(I, INTEGRATOR_MIN, INTEGRATOR_MAX);
 
                 float D = -POS_KD*vel_rpm;
 
-                float u_pi = P + I + D;
+                float u_pi = P + D;
                 float u_ff = 0.0f;
 
                 // Only apply FF when we are "meaningfully away" from target
-                if (fabsf(e) > POS_FF_DEADBAND_DEG) {
+                if (fabsf(e) >= POS_FF_DEADBAND_DEG) {
                     if (e > 0.0f) {
                         u_ff = U_STATIC_FWD;
                     } else {
                         u_ff = -U_STATIC_REV;
                     }
-                }   
+                } else {
+                    u_pi = 0.0f;
+                    }
 
                 float u_unsat = u_pi + u_ff;
                 u = clampFloat(u_unsat, -1.0f, 1.0f);
@@ -229,6 +242,22 @@ void controllerTask(void *pvParameters)
                 break;
             }
         }
+
+        sdLoggerLogControllerSample(
+                    controlModeToString(mode),
+                    ref.angleDeg,
+                    ref.velRPM,
+                    enc.absAngleDeg,
+                    vel.velRpm,
+                    e,
+                    u,
+                    P,
+                    I,
+                    D,
+                    loopCounter
+            );
+
+        ++loopCounter;
     }
 }
 
