@@ -18,6 +18,8 @@ static bool           s_havePrevEdge  = false;
 static portMUX_TYPE   s_velMux = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t   s_velTaskHandle = nullptr;
 
+static void velocityTask(void *pvParameters);
+
 void velocityInit()
 {
     s_velQueue = xQueueCreate(16, sizeof(VelEvent));
