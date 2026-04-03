@@ -1,0 +1,29 @@
+# Arduino Nano ESP32 — Pin Overview
+
+GPIO mapping for use when programming as a generic ESP32-S3.
+
+## Footswitch
+
+| Physical Contact | Variable Name | Arduino Pin | ESP32-S3 GPIO |
+|------------------|---------------|-------------|---------------|
+| Tip              | PIN_B         | D6          | GPIO9         |
+| Ring             | PIN_A         | D5          | GPIO8         |
+| Sleeve           | PIN_C         | D4          | GPIO7         |
+
+## CAN Breakout (SPI)
+
+| Signal | Arduino Pin | ESP32-S3 GPIO | Notes                          |
+|--------|-------------|---------------|--------------------------------|
+| CS     | D10         | GPIO21        | Chip Select                    |
+| MOSI   | D11         | GPIO38        | Controller Out / Peripheral In |
+| MISO   | D12         | GPIO47        | Controller In / Peripheral Out |
+| SCK    | D13         | GPIO48        | SPI Clock                      |
+| INT    | D9          | GPIO18        | Interrupt                      |
+
+## IR Sensors
+
+| Sensor | Arduino Pin | ESP32-S3 GPIO |
+|--------|-------------|---------------|
+| IR_A   | D7          | GPIO10        |
+| IR_B   | D8          | GPIO17        |
+| IR_C   | D9          | GPIO18        |
