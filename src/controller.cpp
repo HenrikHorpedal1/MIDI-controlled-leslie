@@ -1,263 +1,147 @@
+// controller.cpp
+#include "controller.h"
+#include "reference.h"
+#include "moteus-config.h"
+#include "clock_sync.h"
+
 #include <Arduino.h>
 #include <math.h>
-
+#include <limits>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "quadrature-encoder.h"
-#include "velocity.h"
-#include "reference.h"
-#include "motor.h"
+// Tuning constants
+static constexpr double ACCEL_LIMIT_REV_S2  = 1.67;  // ~4s ramp to tremolo (6.67 rev/s)
+static constexpr double SUBDIVISION         = 1.0;   // 1 = quarter note, 0.5 = half, 2 = 8th
+static constexpr double STOP_THRESH_REV_S   = 0.1;  // ~6 RPM — below this, enter Position mode
+static constexpr double SPINUP_TOLERANCE    = 0.15; // fraction of target vel — within 15% → lock
 
+static const double kNaN = std::numeric_limits<double>::quiet_NaN();
 
-#include "sd_logger.h"
-
-// Control loop period
-static constexpr float      CTRL_DT_S          = 0.001f;          // 1 kHz
-static constexpr TickType_t CTRL_PERIOD_TICKS  = pdMS_TO_TICKS(1);
-
-// Unit conversions
-static constexpr float DEG_PER_SEC_PER_RPM = 360.0f / 60.0f;      // 6.0
-static constexpr float VEL_THRESH_RPM      = 15.0f;
-//static constexpr float VEL_THRESH_DEG_S    = VEL_THRESH_RPM * DEG_PER_SEC_PER_RPM; // 180 deg/s
-
-// “Zero” velocity reference threshold (deg/s)
-static constexpr float VEL_REF_ZERO_THRES_RPM = 10.0f;             // ~0.17 rpm
-
-// Homing open-loop speed (normalized, -1..1)
-static constexpr float HOMING_U = 0.14f;                           // ~10% of MAX_INPUT_PWM
-
-static constexpr float VEL_KP = 0.01f;
-static constexpr float VEL_KI = 0.005f;
-
-static constexpr float POS_KP = 0.00000001f;
-static constexpr float POS_KD = 0.00000000001f;
-
-static constexpr float U_STATIC_FWD = 0.070f;    // forward direction
-static constexpr float U_STATIC_REV = 0.070f;    // reverse direction
-static constexpr float POS_FF_DEADBAND_DEG = 22.5f;
-
-// Integrator clamp
-static constexpr float INTEGRATOR_MAX = U_STATIC_FWD;
-static constexpr float INTEGRATOR_MIN = -U_STATIC_REV;
-
-
-static inline float clampFloat(float x, float lo, float hi)
-{
-    if (x < lo) return lo;
-    if (x > hi) return hi;
-    return x;
+// Format that enables accel_limit to be transmitted (default resolution is kIgnore)
+static mm::PositionMode::Format makeAccelFmt() {
+    mm::PositionMode::Format f;
+    f.accel_limit = mm::kFloat;
+    return f;
 }
+static const mm::PositionMode::Format kAccelFmt = makeAccelFmt();
 
-static inline float wrapAngleErrorDeg(float e)
-{
-    // Wrap into [-180, 180]
-    while (e > 180.0f)  e -= 360.0f;
-    while (e < -180.0f) e += 360.0f;
-    return e;
-}
+enum class ControlMode { Velocity, BeatSync, Position };
 
-// ---------------- Control mode ----------------
-
-enum class ControlMode : uint8_t {
-    Homing,
-    Velocity,
-    Position
-};
-
-static const char* controlModeToString(ControlMode mode)
-{
-    switch (mode) {
-        case ControlMode::Homing:   return "Homing";
-        case ControlMode::Velocity: return "Velocity";
-        case ControlMode::Position: return "Position";
-        default:                    return "Unknown";
-    }
-}
-
-static ControlMode selectControlMode(const EncoderState   &enc,
-                                     const VelocityState  &vel,
-                                     const ReferenceState &ref)
-{
-    // 1) Not homed yet - homing mode
-    if (!enc.homed) {
-        return ControlMode::Homing;
-    }
-
-    // 2) Homed, but something is “not ready” - just go to zero position.
-    if (!vel.valid) {
-        return ControlMode::Position;
-    }
-
-    const bool refIsZero  = fabsf(ref.velRPM)  < VEL_REF_ZERO_THRES_RPM;
-    const bool speedIsLow = fabsf(vel.velRpm) < VEL_THRESH_RPM;
-
-    if (!refIsZero) {
-        return ControlMode::Velocity;
-    }
-
-    //   still moving fast - velocity mode (brake)
-    //   slow enough       - position mode (hold angle)
-    if (!speedIsLow) {
-        return ControlMode::Velocity;
-    }
-
-    return ControlMode::Position;
-}
-
-
-static void plotController(float ref,
-                           float measurement,
-                           float error,
-                           float input,
-                           float P,
-                           float I,
-                           float D)
-{
-    // don't spam the USB
-    static uint32_t counter = 0;
-    constexpr uint32_t PLOT_EVERY_N = 10; 
-
-    if (++counter < PLOT_EVERY_N) {
+void controllerTask(void* pvParameters) {
+    if (!configureMoteus(Serial)) {
+        Serial.println("Moteus init failed — controller task exiting");
+        vTaskDelete(nullptr);
         return;
     }
-    counter = 0;
 
-    Serial.print("Ref:");           Serial.print(ref);          Serial.print(",");
-    Serial.print("Measurement:");   Serial.print(measurement);  Serial.print(",");
-    Serial.print("err:");           Serial.print(error);        Serial.print(",");
-    Serial.print("u:");             Serial.print(input);        Serial.print(",");
-    Serial.print("P:");             Serial.print(P);            Serial.print(",");
-    Serial.print("I:");             Serial.print(I);            Serial.print(",");
-    Serial.print("D:");             Serial.println(D);            
-}
+    ControlMode mode         = ControlMode::Velocity;
+    double s_lastPosRevs     = 0.0;
+    double s_lastVelRevs     = 0.0;
+    double s_homePos         = 0.0;
+    double s_beatOffset      = 0.0;
+    bool   s_beatTracking    = false;  // false = spinning up, true = position tracking
 
-void controllerTask(void *pvParameters)
-{
-    (void)pvParameters;
-
-    EncoderState   enc{};
-    VelocityState  vel{};
-    ReferenceState ref{};
-
-    float velInt = 0.0f;   // integrator for velocity loop
-    float posInt = 0.0f;   // integrator for position loop
-
-    TickType_t lastWakeTime = xTaskGetTickCount();
-
-    uint32_t   loopCounter  = 0;
-
-    for (;;)
-    {
-        vTaskDelayUntil(&lastWakeTime, CTRL_PERIOD_TICKS);
-
-        getEncoderState(enc);
-        velocityGetState(vel);
+    for (;;) {
+        ReferenceState ref;
         referenceGetActive(ref);
 
-        ControlMode mode = selectControlMode(enc, vel, ref);
+        const bool clockActive = clockSyncIsRunning() && clockSyncIsLocked();
 
-        float u = 0.0f;
-        float e = 0.0f;
-        float P = 0.0f;
-        float I = 0.0f;
-        float D = 0.0f;
-
-        switch (mode)
-        {
-            case ControlMode::Homing:
-            {
-                velInt = 0.0f;
-                posInt = 0.0f;
-
-                motorSetNormalized(HOMING_U);
-                plotController(ref.angleDeg, enc.absAngleDeg, 0.0f, HOMING_U,0.0f,0.0f, 0.0f);
-                continue;
+        // --- Mode selection ---
+        if (clockActive) {
+            if (mode != ControlMode::BeatSync) {
+                // Entering BeatSync — start in spin-up sub-state
+                s_beatTracking = false;
+                mode = ControlMode::BeatSync;
             }
+        } else {
+            if (mode == ControlMode::BeatSync) {
+                mode = ControlMode::Velocity;
+                s_beatTracking = false;
+            }
+            if (ref.velRPM == 0.0f) {
+                if (mode != ControlMode::Position && s_lastVelRevs < STOP_THRESH_REV_S) {
+                    s_homePos = round(s_lastPosRevs);
+                    mode = ControlMode::Position;
+                }
+            } else {
+                if (mode == ControlMode::Position) {
+                    mode = ControlMode::Velocity;
+                }
+            }
+        }
 
-            case ControlMode::Velocity:
-            {
+        // --- Command ---
+        mm::PositionMode::Command cmd;
+        bool replied = false;
 
-                float e = ref.velRPM - vel.velRpm; 
-                float P = VEL_KP * e;
-                velInt += e * CTRL_DT_S;
-                float D = 0.0f;
-                float I = velInt*VEL_KI;
-                float u_pi = P + I;
+        switch (mode) {
 
-                float u_ff = 0.0f;
-
-                //if (e > 0.0f) {
-                //    // Need to move in positive direction
-                //    u_ff = U_STATIC_FWD;
-                //} else {
-                //    // Need to move in negative direction
-                //    u_ff = -U_STATIC_REV;
-                //}
-
-
-                //velInt += e * CTRL_DT_S;
-                //velInt = clampFloat(velInt, INTEGRATOR_MIN, INTEGRATOR_MAX);
-
-                float u_unsat = u_pi + u_ff;
-                u = clampFloat(u_unsat, -1.0f, 1.0f);
-                motorSetNormalized(u);
-                plotController(ref.velRPM, vel.velRpm, e, u, P, I, D);
-
+            case ControlMode::Velocity: {
+                cmd.position    = kNaN;              // velocity-only
+                cmd.velocity    = ref.velRPM / 60.0;
+                cmd.accel_limit = ACCEL_LIMIT_REV_S2;
+                replied = hornMoteus().SetPosition(cmd, &kAccelFmt);
                 break;
             }
 
-            case ControlMode::Position:
-            {
-                const float posRef_deg  = ref.angleDeg;
-                const float posMeas_deg = enc.absAngleDeg;
-                const float vel_rpm = vel.velRpm;
+            case ControlMode::BeatSync: {
+                const double targetVel = clockSyncGetBpm() * SUBDIVISION / 60.0;
 
-                float e = posRef_deg - posMeas_deg;
-                e = wrapAngleErrorDeg(e);
-                float P = POS_KP * e;
+                if (!s_beatTracking) {
+                    // Spin-up: command target velocity, wait until close enough
+                    cmd.position    = kNaN;
+                    cmd.velocity    = targetVel;
+                    cmd.accel_limit = ACCEL_LIMIT_REV_S2;
+                    replied = hornMoteus().SetPosition(cmd, &kAccelFmt);
 
-
-                float D = -POS_KD*vel_rpm;
-
-                float u_pi = P + D;
-                float u_ff = 0.0f;
-
-                // Only apply FF when we are "meaningfully away" from target
-                if (fabsf(e) >= POS_FF_DEADBAND_DEG) {
-                    if (e > 0.0f) {
-                        u_ff = U_STATIC_FWD;
-                    } else {
-                        u_ff = -U_STATIC_REV;
+                    const double velErr = fabs(s_lastVelRevs - targetVel);
+                    if (targetVel > 0.0 && velErr < targetVel * SPINUP_TOLERANCE) {
+                        // Speed is close — compute offset and lock to position tracking
+                        uint64_t ticks    = clockSyncGetTickCount();
+                        double   subPhase = clockSyncGetPhase();
+                        double   expected = (ticks + subPhase) / 24.0 * SUBDIVISION;
+                        s_beatOffset   = s_lastPosRevs - expected;
+                        s_beatTracking = true;
                     }
                 } else {
-                    u_pi = 0.0f;
-                    }
+                    // Position tracking: feed derived beat position to moteus
+                    uint64_t ticks    = clockSyncGetTickCount();
+                    double   subPhase = clockSyncGetPhase();
+                    double   expected = (ticks + subPhase) / 24.0 * SUBDIVISION + s_beatOffset;
 
-                float u_unsat = u_pi + u_ff;
-                u = clampFloat(u_unsat, -1.0f, 1.0f);
+                    cmd.position = expected;
+                    cmd.velocity = targetVel;  // feedforward
+                    replied = hornMoteus().SetPosition(cmd);
+                }
+                break;
+            }
 
-                plotController(ref.angleDeg, enc.absAngleDeg, e, u, P, I, D);
-                motorSetNormalized(u);
+            case ControlMode::Position: {
+                if (ref.velRPM > 0.0f) {
+                    // New speed requested — exit to Velocity
+                    mode = ControlMode::Velocity;
+                    cmd.position    = kNaN;
+                    cmd.velocity    = ref.velRPM / 60.0;
+                    cmd.accel_limit = ACCEL_LIMIT_REV_S2;
+                } else {
+                    cmd.position    = s_homePos;
+                    cmd.velocity    = 0.0;
+                    cmd.accel_limit = ACCEL_LIMIT_REV_S2;
+                }
+                replied = hornMoteus().SetPosition(cmd, &kAccelFmt);
                 break;
             }
         }
 
-        sdLoggerLogControllerSample(
-                    controlModeToString(mode),
-                    ref.angleDeg,
-                    ref.velRPM,
-                    enc.absAngleDeg,
-                    vel.velRpm,
-                    e,
-                    u,
-                    P,
-                    I,
-                    D,
-                    loopCounter
-            );
+        // --- Update state from reply ---
+        if (replied) {
+            const auto& v = hornMoteus().last_result().values;
+            s_lastPosRevs = v.position;
+            s_lastVelRevs = fabs(v.velocity);
+        }
 
-        ++loopCounter;
+        vTaskDelay(pdMS_TO_TICKS(10)); // 100 Hz
     }
 }
-

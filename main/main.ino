@@ -1,34 +1,31 @@
-#include "quadrature-encoder.h"
-#include "velocity.h"
 #include "footswitch.h"
 #include "midi-listner.h"
 #include "input_handler.h"
 #include "input_event.h"
 #include "reference.h"
-#include "ramp-trajectory.h"
+#include "clock_sync.h"
 #include "controller.h"
-#include "motor.h"
-#include "sd_logger.h"
 
 static QueueHandle_t g_inputQueue = nullptr;
+static QueueHandle_t g_clockQueue = nullptr;
+static MidiTaskParams g_midiParams;
 
 void setup() {
     Serial.begin(115200);
 
-    encoderInit();
-    velocityInit();
-    motorInit();
     referenceInit();
-    rampTrajectoryInit();
 
-    // Initialize Input queue and pass to publishers and subscribers
     g_inputQueue = xQueueCreate(16, sizeof(InputEvent));
+    g_clockQueue = xQueueCreate(32, sizeof(ClockMsg));
+
+    g_midiParams.inputQueue = g_inputQueue;
+    g_midiParams.clockQueue = g_clockQueue;
 
     xTaskCreate(
         footSwitchTask,
         "footSwitchTask",
         4096,
-        g_inputQueue, //parameter
+        g_inputQueue,
         3,      // priority
         nullptr
     );
@@ -37,8 +34,17 @@ void setup() {
         midiListnerTask,
         "midiListnerTask",
         4096,
-        g_inputQueue,
+        &g_midiParams,
         3,      // priority
+        nullptr
+    );
+
+    xTaskCreate(
+        clockSyncTask,
+        "clockSyncTask",
+        4096,
+        g_clockQueue,
+        4,      // priority
         nullptr
     );
 
@@ -51,10 +57,6 @@ void setup() {
         nullptr
     );
 
-    rampTrajectoryStartTask(3);
-
-    sdLoggerBegin();
-    
     xTaskCreate(
         controllerTask,
         "ControllerTask",

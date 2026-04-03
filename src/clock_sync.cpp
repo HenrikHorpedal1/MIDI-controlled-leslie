@@ -18,6 +18,7 @@ static inline double clampd(double x, double lo, double hi) {
   return (x < lo) ? lo : (x > hi) ? hi : x;
 }
 
+
 static inline double bpmToTickPeriodUs(double bpm) {
   // MIDI clock = 24 ticks / quarter note
   return 60.0e6 / (bpm * 24.0);

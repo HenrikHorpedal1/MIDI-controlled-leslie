@@ -2,7 +2,6 @@
 #include <Arduino.h>
 #include "input_event.h"
 #include "reference.h"
-#include "ramp-trajectory.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -52,22 +51,20 @@ void inputHandlerTask(void *pvParameters)
                     //Serial.print("Press at");
                     //Serial.println(micros());
 
+                    ReferenceState r;
+                    r.angleDeg = 0.0f;
+
                     if (fs.swA)
                     {
                         // A pressed → choose speed based on B
-                        if (fs.swB)
-                        {
-                            rampTrajectoryCommand(SpeedCommand::TREMOLO, RefSource::Footswitch);
-                        }
-                        else if (!fs.swB)
-                        {
-                            rampTrajectoryCommand(SpeedCommand::CHORALE, RefSource::Footswitch);
-                        }
+                        r.velRPM = fs.swB ? TREMOLO_RPM : CHORALE_RPM;
                     }
                     else  // !fs.swA -> stop
                     {
-                        rampTrajectoryCommand(SpeedCommand::STOP,RefSource::Footswitch);
+                        r.velRPM = 0.0f;
                     }
+
+                    referenceSetFrom(RefSource::Footswitch, r);
 
                     referenceSetMode(RefSource::Footswitch);
                     //Serial.println("Set reference from foot switch.");
@@ -98,11 +95,14 @@ void inputHandlerTask(void *pvParameters)
 
                 case InputSource::MidiButton:
                 {
+                    ReferenceState r;
+                    r.angleDeg = 0.0f;
                     switch (ev.data.midiButton) {
-                            case MidiButtonEvent::BUTTON0: rampTrajectoryCommand(SpeedCommand::CHORALE, RefSource::MidiButton); break;
-                            case MidiButtonEvent::BUTTON1: rampTrajectoryCommand(SpeedCommand::STOP,RefSource::MidiButton);    break;
-                            case MidiButtonEvent::BUTTON2: rampTrajectoryCommand(SpeedCommand::TREMOLO,RefSource::MidiButton); break;
-                        }
+                        case MidiButtonEvent::BUTTON0: r.velRPM = CHORALE_RPM; break;
+                        case MidiButtonEvent::BUTTON1: r.velRPM = 0.0f;        break;
+                        case MidiButtonEvent::BUTTON2: r.velRPM = TREMOLO_RPM; break;
+                    }
+                    referenceSetFrom(RefSource::MidiButton, r);
                     referenceSetMode(RefSource::MidiButton);
                     break;
                 }
