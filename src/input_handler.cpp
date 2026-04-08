@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include "input_event.h"
 #include "reference.h"
+#include "mode-selector.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -43,58 +44,49 @@ void inputHandlerTask(void *pvParameters)
     {
         if (xQueueReceive(g_inputQueue, &ev, portMAX_DELAY) == pdTRUE) {
 
+            const ControlSource activeSource = modeSelectorGetSource();
+
             switch (ev.source) {
 
                 case InputSource::Footswitch:
                 {
-                    const FootswitchState &fs = ev.data.foot;   
-                    //Serial.print("Press at");
-                    //Serial.println(micros());
+                    if (activeSource != ControlSource::Footswitch) break;
 
+                    const FootswitchState &fs = ev.data.foot;
                     ReferenceState r;
                     r.angleDeg = 0.0f;
+                    r.velRPM   = fs.swA ? (fs.swB ? TREMOLO_RPM : CHORALE_RPM) : 0.0f;
 
-                    if (fs.swA)
-                    {
-                        // A pressed → choose speed based on B
-                        r.velRPM = fs.swB ? TREMOLO_RPM : CHORALE_RPM;
-                    }
-                    else  // !fs.swA -> stop
-                    {
-                        r.velRPM = 0.0f;
-                    }
+                    Serial.println("reference:");
+                    Serial.println(r.velRPM);
 
-                    referenceSetFrom(RefSource::Footswitch, r);
-
-                    referenceSetMode(RefSource::Footswitch);
-                    //Serial.println("Set reference from foot switch.");
+                    referenceSet(r);
                     break;
                 }
 
                 case InputSource::ExpPedal:
                 {
+                    if (activeSource != ControlSource::ExpressionPedal) break;
                     //TODO: Implement when driver is implemented.
                     break;
                 }
 
                 case InputSource::MidiCC:
                 {
-                    const MidiCCEvent &m = ev.data.midiCC;
+                    if (activeSource != ControlSource::MidiKeyboard) break;
 
-                    // Map CC value to RPM reference:
-                    
-                    //Serial.print("midi received in input-handler.");
                     ReferenceState r;
-                    r.angleDeg      = 0.0f;
-                    r.velRPM        = midiCCToRPM(m.value);
+                    r.angleDeg = 0.0f;
+                    r.velRPM   = midiCCToRPM(ev.data.midiCC.value);
 
-                    referenceSetFrom(RefSource::MidiCC, r);
-                    referenceSetMode(RefSource::MidiCC);
+                    referenceSet(r);
                     break;
                 }
 
                 case InputSource::MidiButton:
                 {
+                    if (activeSource != ControlSource::MidiKeyboard) break;
+
                     ReferenceState r;
                     r.angleDeg = 0.0f;
                     switch (ev.data.midiButton) {
@@ -102,8 +94,7 @@ void inputHandlerTask(void *pvParameters)
                         case MidiButtonEvent::BUTTON1: r.velRPM = 0.0f;        break;
                         case MidiButtonEvent::BUTTON2: r.velRPM = TREMOLO_RPM; break;
                     }
-                    referenceSetFrom(RefSource::MidiButton, r);
-                    referenceSetMode(RefSource::MidiButton);
+                    referenceSet(r);
                     break;
                 }
             }
