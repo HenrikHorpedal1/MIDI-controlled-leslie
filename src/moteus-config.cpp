@@ -56,6 +56,17 @@ bool configureMoteus(Print& debug) {
     return false;
   }
 
+  // Configure PID gains (RAM only — survives until power-off)
+  char pidBuf[64];
+  snprintf(pidBuf, sizeof(pidBuf), "conf set servo.pid_position.kp %.4f", MOTEUS_BASE_KP);
+  g_horn.DiagnosticCommand(pidBuf); delay(20);
+  snprintf(pidBuf, sizeof(pidBuf), "conf set servo.pid_position.ki %.4f", MOTEUS_BASE_KI);
+  g_horn.DiagnosticCommand(pidBuf); delay(20);
+  snprintf(pidBuf, sizeof(pidBuf), "conf set servo.pid_position.kd %.4f", MOTEUS_BASE_KD);
+  g_horn.DiagnosticCommand(pidBuf); delay(20);
+  debug.printf("Moteus PID gains set: kp=%.4f ki=%.4f kd=%.4f\n",
+               MOTEUS_BASE_KP, MOTEUS_BASE_KI, MOTEUS_BASE_KD);
+
   g_initialized = true;
   return true;
 }
