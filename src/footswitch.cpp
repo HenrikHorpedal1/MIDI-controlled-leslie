@@ -87,6 +87,22 @@ void footSwitchTask(void *pvParameters)
 
     for (;;)
     {
+        // --- DEBUG: serial footswitch sim — '1'=chorale(A) '2'=tremolo(A+B) '0'=stop ---
+        if (Serial.available() && s_inputQueue != nullptr) {
+            char c = Serial.read();
+            bool sa = false, sb = false;
+            if      (c == '1') { sa = true;  sb = false; }
+            else if (c == '2') { sa = true;  sb = true;  }
+            else if (c == '0') { sa = false; sb = false; }
+            if (c == '0' || c == '1' || c == '2') {
+                InputEvent ev;
+                ev.source    = InputSource::Footswitch;
+                ev.data.foot = FootswitchState{ sa, sb };
+                xQueueSend(s_inputQueue, &ev, 0);
+            }
+        }
+        // --- END DEBUG ---
+
         bool a = readSwitchA();
         bool b = readSwitchB();
 
