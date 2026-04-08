@@ -94,25 +94,6 @@ static void onNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
 }
 
 static TaskHandle_t s_midiTaskHandle = nullptr;
-//
-//static inline void notifyMidiTask() {
-//  if (!s_midiTaskHandle) return;
-//
-//  if (xPortInIsrContext()) {
-//    BaseType_t hpw = pdFALSE;
-//    vTaskNotifyGiveFromISR(s_midiTaskHandle, &hpw);
-//    if (hpw) portYIELD_FROM_ISR();
-//  } else {
-//    xTaskNotifyGive(s_midiTaskHandle);
-//  }
-//}
-
-// TinyUSB callback (must be C linkage)
-// extern "C" void tud_midi_rx_cb(uint8_t itf) {
-//   (void)itf;
-//   g_usbMidiNotifies++;
-//   notifyMidiTask();
-// }
 
 void midiListnerTask(void *pvParameters) {
   auto* p = static_cast<MidiTaskParams*>(pvParameters);
