@@ -5,6 +5,7 @@
 #include "reference.h"
 #include "clock_sync.h"
 #include "controller.h"
+#include "mode-selector.h"
 
 static QueueHandle_t g_inputQueue = nullptr;
 static QueueHandle_t g_clockQueue = nullptr;
@@ -16,7 +17,7 @@ void setup() {
     referenceInit();
 
     g_inputQueue = xQueueCreate(16, sizeof(InputEvent));
-    g_clockQueue = xQueueCreate(32, sizeof(ClockMsg));
+    g_clockQueue = xQueueCreate(32, sizeof(ClockMsg)); //TODO: does it make sense to have a greater clock queue than midi queue if all signals goes through midi first?
 
     g_midiParams.inputQueue = g_inputQueue;
     g_midiParams.clockQueue = g_clockQueue;
@@ -26,7 +27,7 @@ void setup() {
         "footSwitchTask",
         4096,
         g_inputQueue,
-        3,      // priority
+        3,      // TODO: analyze to find reasonable priorities.
         nullptr
     );
 
@@ -63,6 +64,15 @@ void setup() {
         4096,
         nullptr,
         5,      // priority
+        nullptr
+    );
+
+    xTaskCreate(
+        modeSelectorTask,
+        "modeSelectorTask",
+        2048,
+        nullptr,
+        2,      // low priority — polls at 20 Hz
         nullptr
     );
 }
