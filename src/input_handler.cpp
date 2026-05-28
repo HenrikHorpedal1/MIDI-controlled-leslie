@@ -8,8 +8,10 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
-constexpr float CHORALE_RPM = 40.0f;
-constexpr float TREMOLO_RPM = 400.0f;
+constexpr float HORN_CHORALE_RPM = 30.0f;
+constexpr float HORN_TREMOLO_RPM = 50.0f;
+constexpr float DRUM_CHORALE_RPM = 30.0f;
+constexpr float DRUM_TREMOLO_RPM = 50.0f;
 constexpr int CC_DEADBAND = 15;
 
 static QueueHandle_t g_inputQueue = nullptr;
@@ -44,7 +46,9 @@ void inputHandlerTask(void *pvParameters)
     {
         if (xQueueReceive(g_inputQueue, &ev, portMAX_DELAY) == pdTRUE) {
 
-            const ControlSource activeSource = modeSelectorGetSource();
+            //const ControlSource activeSource = modeSelectorGetSource();
+            //for testing now:
+            const ControlSource activeSource = ControlSource::Footswitch;
 
             switch (ev.source) {
 
@@ -53,14 +57,19 @@ void inputHandlerTask(void *pvParameters)
                     if (activeSource != ControlSource::Footswitch) break;
 
                     const FootswitchState &fs = ev.data.foot;
-                    ReferenceState r;
-                    r.angleDeg = 0.0f;
-                    r.velRPM   = fs.swA ? (fs.swB ? TREMOLO_RPM : CHORALE_RPM) : 0.0f;
-
-                    Serial.println("reference:");
-                    Serial.println(r.velRPM);
-
-                    referenceSet(r);
+                    ReferenceState horn, drum;
+                    horn.angleDeg = drum.angleDeg = 0.0f;
+                    if (fs.swA && fs.swB) {
+                        horn.velRPM = HORN_TREMOLO_RPM;
+                        drum.velRPM = DRUM_TREMOLO_RPM;
+                    } else if (fs.swA) {
+                        horn.velRPM = HORN_CHORALE_RPM;
+                        drum.velRPM = DRUM_CHORALE_RPM;
+                    } else {
+                        horn.velRPM = drum.velRPM = 0.0f;
+                    }
+                    referenceSet(Rotor::Horn, horn);
+                    referenceSet(Rotor::Drum, drum);
                     break;
                 }
 
@@ -75,11 +84,11 @@ void inputHandlerTask(void *pvParameters)
                 {
                     if (activeSource != ControlSource::MidiKeyboard) break;
 
-                    ReferenceState r;
-                    r.angleDeg = 0.0f;
-                    r.velRPM   = midiCCToRPM(ev.data.midiCC.value);
-
-                    referenceSet(r);
+                    float rpm = midiCCToRPM(ev.data.midiCC.value);
+                    ReferenceState horn = { 0.0f, rpm };
+                    ReferenceState drum = { 0.0f, rpm * (DRUM_TREMOLO_RPM / HORN_TREMOLO_RPM) };
+                    referenceSet(Rotor::Horn, horn);
+                    referenceSet(Rotor::Drum, drum);
                     break;
                 }
 
@@ -87,14 +96,23 @@ void inputHandlerTask(void *pvParameters)
                 {
                     if (activeSource != ControlSource::MidiKeyboard) break;
 
-                    ReferenceState r;
-                    r.angleDeg = 0.0f;
+                    ReferenceState horn = { 0.0f, 0.0f };
+                    ReferenceState drum = { 0.0f, 0.0f };
                     switch (ev.data.midiButton) {
-                        case MidiButtonEvent::BUTTON0: r.velRPM = CHORALE_RPM; break;
-                        case MidiButtonEvent::BUTTON1: r.velRPM = 0.0f;        break;
-                        case MidiButtonEvent::BUTTON2: r.velRPM = TREMOLO_RPM; break;
+                        case MidiButtonEvent::BUTTON0:
+                            horn.velRPM = HORN_CHORALE_RPM;
+                            drum.velRPM = DRUM_CHORALE_RPM;
+                            break;
+                        case MidiButtonEvent::BUTTON1:
+                            horn.velRPM = drum.velRPM = 0.0f;
+                            break;
+                        case MidiButtonEvent::BUTTON2:
+                            horn.velRPM = HORN_TREMOLO_RPM;
+                            drum.velRPM = DRUM_TREMOLO_RPM;
+                            break;
                     }
-                    referenceSet(r);
+                    referenceSet(Rotor::Horn, horn);
+                    referenceSet(Rotor::Drum, drum);
                     break;
                 }
             }
