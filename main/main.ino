@@ -7,6 +7,12 @@
 #include "controller.h"
 #include "mode-selector.h"
 
+// Define CLOCK_SIM to replace the MIDI clock source with a simulated 40 BPM clock.
+// #define CLOCK_SIM
+#ifdef CLOCK_SIM
+#include "clock_sim.h"
+#endif
+
 static QueueHandle_t g_inputQueue = nullptr;
 static QueueHandle_t g_clockQueue = nullptr;
 static MidiTaskParams g_midiParams;
@@ -22,12 +28,13 @@ void setup() {
     g_midiParams.inputQueue = g_inputQueue;
     g_midiParams.clockQueue = g_clockQueue;
 
+#ifndef CLOCK_SIM
     xTaskCreate(
         footSwitchTask,
         "footSwitchTask",
         4096,
         g_inputQueue,
-        3,      // TODO: analyze to find reasonable priorities.
+        3,
         nullptr
     );
 
@@ -36,9 +43,19 @@ void setup() {
         "midiListnerTask",
         4096,
         &g_midiParams,
-        3,      // priority
+        3,
         nullptr
     );
+#else
+    xTaskCreate(
+        clockSimTask,
+        "clockSimTask",
+        4096,
+        g_clockQueue,
+        3,
+        nullptr
+    );
+#endif
 
     xTaskCreate(
         clockSyncTask,

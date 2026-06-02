@@ -10,9 +10,14 @@
 static constexpr double BPM_MIN = 30.0;
 static constexpr double BPM_MAX = 300.0;
 
-// PLL gains (start here; tweak later)
-static constexpr double KP = 0.20;   // phase correction strength
-static constexpr double KI = 0.02;  // frequency/period correction strength
+// Alpha-beta filter gains.
+// One filter step == one MIDI clock tick (sample interval T = 1 tick), so the
+// "velocity" state is exactly the tick period in microseconds and the velocity
+// update needs no /T term.
+//   g (alpha) -> position/phase correction
+//   h (beta)  -> velocity/period correction
+static constexpr double G_ALPHA = 0.16;
+static constexpr double H_BETA  = 0.014;
 
 static inline double clampd(double x, double lo, double hi) {
   return (x < lo) ? lo : (x > hi) ? hi : x;
@@ -90,25 +95,26 @@ static void processTick(int64_t t_us) {
     return;
   }
 
-  // Locked: do PLL correction
-  const double tPred = s_nextPredUs;
-  double err = (double)t_us - tPred;          // positive if tick arrived late
+  // Locked: alpha-beta filter update.
+  // s_nextPredUs is the a-priori prediction x_pred = x_prev + v_prev for the
+  // arrival time of this tick. The residual drives both state corrections.
+  const double xPred = s_nextPredUs;
+  double err = (double)t_us - xPred;          // residual: positive if tick late
   s_lastErrUs = err;
-  const double period = s_periodUs;
 
-  // Clamp error to avoid wild jumps (USB jitter/outliers)
-  const double errClamp = 0.50 * period;
+  // Clamp residual to reject USB jitter / outliers.
+  const double errClamp = 0.50 * s_periodUs;
   err = clampd(err, -errClamp, errClamp);
 
-  // Update period (frequency) slowly
-  s_periodUs = clampd(s_periodUs + (KI * err), periodMin, periodMax);
+  // Velocity (period) update:  v += h * err
+  s_periodUs = clampd(s_periodUs + (H_BETA * err), periodMin, periodMax);
 
-  // Update phase prediction for next tick
-  const double phaseAdjClamp = 0.25 * s_periodUs;
-  const double phaseAdj = clampd(KP * err, -phaseAdjClamp, phaseAdjClamp);
+  // Position update:  x = x_pred + g * err  (smoothed estimate of this tick)
+  const double xEst = xPred + (G_ALPHA * err);
 
+  // Predict next tick: x + v
   s_lastTickUs = t_us;
-  s_nextPredUs = (double)t_us + s_periodUs + phaseAdj;
+  s_nextPredUs = xEst + s_periodUs;
   s_tickCount++;
 }
 
