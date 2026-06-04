@@ -1,16 +1,26 @@
 #include "Arduino.h"
 #include "footswitch.h"
+#include "input_event.h"
+
+static QueueHandle_t g_inputQueue = nullptr;
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(115200);
   delay(50);
- 
-  xTaskCreatePinnedToCore(footSwitchTask, "SwTask", 2048, NULL, 1, NULL, 1);
+
+  // footSwitchTask reports state changes via an InputEvent queue.
+  g_inputQueue = xQueueCreate(16, sizeof(InputEvent));
+
+  xTaskCreatePinnedToCore(
+      footSwitchTask, "SwTask", 2048, g_inputQueue, 1, NULL, 1);
 }
 
 void loop() {
-  Serial.println("Switch A: " + String(switchA));
-  Serial.println("Switch B: " + String(switchB));
-  delay(1000);
+  InputEvent ev;
+  // Block until the footswitch task reports a change.
+  if (xQueueReceive(g_inputQueue, &ev, portMAX_DELAY) == pdTRUE &&
+      ev.source == InputSource::Footswitch) {
+    Serial.println("Switch A: " + String(ev.data.foot.swA));
+    Serial.println("Switch B: " + String(ev.data.foot.swB));
+  }
 }
