@@ -8,10 +8,10 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
-constexpr float HORN_CHORALE_RPM = 30.0f;
-constexpr float HORN_TREMOLO_RPM = 50.0f;
-constexpr float DRUM_CHORALE_RPM = 40.0f;
-constexpr float DRUM_TREMOLO_RPM = 100.0f;
+constexpr float HORN_CHORALE_RPM = 40.0f;
+constexpr float HORN_TREMOLO_RPM = 420.0f;
+constexpr float DRUM_CHORALE_RPM = 35.0f;
+constexpr float DRUM_TREMOLO_RPM = 350.0f;
 constexpr int CC_DEADBAND = 15;
 
 static QueueHandle_t g_inputQueue = nullptr;

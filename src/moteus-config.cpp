@@ -56,14 +56,21 @@ bool configureMoteus(Print &debug) {
     return false;
   }
 
-  if (!g_horn.SetStop()) {
-    debug.println("WARN: No reply from horn moteus");
-  }
-
   // Read encoder 1 (rotor) position and align the moteus output position to it
   mm::Query::Format enc1Qf;
   enc1Qf.extra[0].register_number = mm::Register(0x052);
-  enc1Qf.extra[0].resolution      = mm::kFloat;
+  enc1Qf.extra[0].resolution = mm::kFloat;
+
+  if (g_horn.SetStop(&enc1Qf)) {
+    const float enc1Pos = g_horn.last_result().values.extra[0].value;
+    mm::OutputExact::Command oeCmd;
+    oeCmd.position = enc1Pos;
+    g_horn.SetOutputExact(oeCmd);
+    delay(20);
+    debug.printf("Horn output aligned to enc1=%.4f\n", enc1Pos);
+  } else {
+    debug.println("WARN: No reply from horn moteus");
+  }
 
   if (g_drum.SetStop(&enc1Qf)) {
     const float enc1Pos = g_drum.last_result().values.extra[0].value;
