@@ -1,0 +1,3 @@
+[submodule "software/third_party/moteus"]
+	path = software/third_party/moteus
+	url = https://github.com/mjbots/moteus.git

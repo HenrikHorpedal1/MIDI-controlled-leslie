@@ -1,4 +1,8 @@
 *.DS_Store
 .venv/
 *.png
+__pycache__/
+
+# Local-only Claude Code guidance (not committed)
+CLAUDE.md
 
