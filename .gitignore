@@ -3,6 +3,14 @@
 *.png
 __pycache__/
 
+# KiCad local/auto-generated files
+*-backups/
+*.kicad_prl
+*.lck
+~*.kicad_*
+fp-info-cache
+.history/
+
 # Local-only Claude Code guidance (not committed)
 CLAUDE.md
 
