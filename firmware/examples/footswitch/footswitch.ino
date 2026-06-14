@@ -19,7 +19,7 @@ void loop() {
   InputEvent ev;
   // Block until the footswitch task reports a change.
   if (xQueueReceive(g_inputQueue, &ev, portMAX_DELAY) == pdTRUE &&
-      ev.source == InputSource::Footswitch) {
+      ev.type == EventType::Footswitch) {
     Serial.println("Switch A: " + String(ev.data.foot.swA));
     Serial.println("Switch B: " + String(ev.data.foot.swB));
   }
