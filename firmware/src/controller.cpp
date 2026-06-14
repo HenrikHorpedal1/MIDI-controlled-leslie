@@ -112,7 +112,7 @@ struct RotorState {
   LoadEstimator est{};
 
   // Park
-  double homeInteger = 0.0; // rotor revolution to hold on once stopped
+  double homeInteger = 0.0; // face revolution to park on (snapped from face pos)
   bool parked = false;      // homeInteger has been snapped this Park
 
   // BeatSync cam planner (one-shot plan computed on entry; see sendBeatSyncCam)
@@ -284,8 +284,9 @@ static bool sendPark(Moteus &moteus, RotorState &st, double stopThresh,
     return sendVelocity(moteus, st, 0.0, /*accelUp=*/accelDown, accelDown);
 
   if (!st.parked) {
+    const double facePos = st.lastPosRevs + st.filteredSlip;
     st.homeInteger =
-        (st.lastRefRevs >= 0.0) ? ceil(st.lastPosRevs) : floor(st.lastPosRevs);
+        (st.lastRefRevs >= 0.0) ? ceil(facePos) : floor(facePos);
     st.parked = true;
     Serial.printf("[pos snap] %s pos=%.3f ref=%.3f homeInt=%.0f slip=%.4f\n",
                   rotorName(rotor), st.lastPosRevs, st.lastRefRevs,
@@ -313,8 +314,9 @@ static ControlState nextState(const Reference &ref) {
   // otherwise Park. (The RPM reference is meaningless here and would otherwise
   // leak through as Velocity when the song stops, leaving the rotors spinning.)
   if (ref.mode == DriveMode::BeatSync) {
-    return (clockSyncIsRunning() && clockSyncIsLocked()) ? ControlState::BeatSync
-                                                         : ControlState::Park;
+    bool go = clockSyncIsRunning() && clockSyncIsLocked()
+           && beatSyncGetSubdivision() != Subdivision::Rest;
+    return go ? ControlState::BeatSync : ControlState::Park;
   }
   // Other sources track the RPM reference directly.
   if (ref.hornRPM == 0.0f && ref.drumRPM == 0.0f)
