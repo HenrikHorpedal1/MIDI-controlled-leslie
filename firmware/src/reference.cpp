@@ -2,27 +2,26 @@
 
 #include "freertos/FreeRTOS.h"
 
-static ReferenceState g_ref[2] = {{ 0.0f, 0.0f }, { 0.0f, 0.0f }};
-static portMUX_TYPE   refMux   = portMUX_INITIALIZER_UNLOCKED;
+static Reference    g_ref  = { DriveMode::Velocity, 0.0f, 0.0f };
+static portMUX_TYPE refMux = portMUX_INITIALIZER_UNLOCKED;
 
 void referenceInit()
 {
     portENTER_CRITICAL(&refMux);
-    g_ref[0] = { 0.0f, 0.0f };
-    g_ref[1] = { 0.0f, 0.0f };
+    g_ref = { DriveMode::Velocity, 0.0f, 0.0f };
     portEXIT_CRITICAL(&refMux);
 }
 
-void referenceSet(Rotor rotor, const ReferenceState &ref)
+void referenceSet(const Reference &ref)
 {
     portENTER_CRITICAL(&refMux);
-    g_ref[static_cast<uint8_t>(rotor)] = ref;
+    g_ref = ref;
     portEXIT_CRITICAL(&refMux);
 }
 
-void referenceGet(Rotor rotor, ReferenceState &out)
+void referenceGet(Reference &out)
 {
     portENTER_CRITICAL(&refMux);
-    out = g_ref[static_cast<uint8_t>(rotor)];
+    out = g_ref;
     portEXIT_CRITICAL(&refMux);
 }

@@ -1,55 +1,55 @@
-#include "mode-selector.h"
+#include "source-selector.h"
+
+#include "input_event.h"
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 
 // --- Pin assignments ---
 static constexpr int PIN_ROTARY_ADC = 14;   // A7 — resistance ladder input
-static constexpr int PIN_SPDT_CTRL  = 5;    // D2 — routes TRS socket (HIGH=footswitch, LOW=exp pedal)
 
 // --- ADC thresholds (midpoints between measured positions) ---
-// Measured with 10k ladder resistors: pos1=745, pos2=1509, pos3=2285, pos4=3099
-// Note: the ladder now reads ascending (pos1 lowest, pos4 highest).
-static constexpr int THR_1_2 = 1127;  // below → pos 1 (Footswitch)
-static constexpr int THR_2_3 = 1897;  // below → pos 2 (ExpressionPedal)
-static constexpr int THR_3_4 = 2692;  // below → pos 3 (MidiKeyboard), above → pos 4 (MidiBeatSync)
+// Measured with 10k ladder resistors: voltage levels ~745 / 1509 / 2285 / 3099.
+// Per the schematic, rotary detent 1 taps the node nearest 3V3, so the ladder
+// reads DESCENDING: pos1 highest, pos4 lowest.
+static constexpr int THR_3_4 = 2692;  // above → pos 1 (Footswitch)
+static constexpr int THR_2_3 = 1897;  // above → pos 2 (ExpressionPedal)
+static constexpr int THR_1_2 = 1127;  // above → pos 3 (MidiKeyboard), below → pos 4 (MidiBeatSync)
 
 // --- Debounce: require this many consecutive stable readings before committing ---
 static constexpr int DEBOUNCE_COUNT = 3;
 
-static portMUX_TYPE  s_mux    = portMUX_INITIALIZER_UNLOCKED;
-static ControlSource s_source = ControlSource::Footswitch;
-
-ControlSource modeSelectorGetSource() {
-    portENTER_CRITICAL(&s_mux);
-    ControlSource src = s_source;
-    portEXIT_CRITICAL(&s_mux);
-    return src;
+static const char* sourceName(InputSource s) {
+    return s == InputSource::Footswitch      ? "Footswitch"      :
+           s == InputSource::ExpressionPedal ? "ExpressionPedal" :
+           s == InputSource::MidiKeyboard    ? "MidiKeyboard"    :
+                                               "MidiBeatSync";
 }
 
-static ControlSource adcToSource(int raw) {
-    if (raw < THR_1_2) return ControlSource::Footswitch;
-    if (raw < THR_2_3) return ControlSource::ExpressionPedal;
-    if (raw < THR_3_4) return ControlSource::MidiKeyboard;
-    return ControlSource::MidiBeatSync;
+static InputSource adcToSource(int raw) {
+    if (raw > THR_3_4) return InputSource::Footswitch;
+    if (raw > THR_2_3) return InputSource::ExpressionPedal;
+    if (raw > THR_1_2) return InputSource::MidiKeyboard;
+    return InputSource::MidiBeatSync;
 }
 
-static void applySPDT(ControlSource src) {
-    digitalWrite(PIN_SPDT_CTRL, src == ControlSource::Footswitch ? HIGH : LOW);
-}
+void sourceSelectorTask(void* pvParameters) {
+    QueueHandle_t inputQueue = static_cast<QueueHandle_t>(pvParameters);
 
-void modeSelectorTask(void* pvParameters) {
     pinMode(PIN_ROTARY_ADC, INPUT);
-    pinMode(PIN_SPDT_CTRL, OUTPUT);
 
-    ControlSource pending   = ControlSource::Footswitch;
-    int           stableFor = 0;
+    InputSource pending   = InputSource::Footswitch;
+    int         stableFor = 0;
 
-    applySPDT(s_source);
+    // No source committed yet: the first stable reading always counts as a
+    // change so the handler learns the position the knob booted in.
+    InputSource current   = InputSource::Footswitch;
+    bool        haveSource = false;
 
     for (;;) {
         const int raw = analogRead(PIN_ROTARY_ADC);
-        const ControlSource candidate = adcToSource(raw);
+        const InputSource candidate = adcToSource(raw);
 
         if (candidate == pending) {
             stableFor++;
@@ -59,20 +59,18 @@ void modeSelectorTask(void* pvParameters) {
         }
 
         if (stableFor >= DEBOUNCE_COUNT) {
-            portENTER_CRITICAL(&s_mux);
-            const bool changed = (candidate != s_source);
-            if (changed) {
-                s_source = candidate;
-            }
-            portEXIT_CRITICAL(&s_mux);
+            if (!haveSource || candidate != current) {
+                current    = candidate;
+                haveSource = true;
 
-            if (changed) {
-                applySPDT(candidate);
-                Serial.printf("[mode] source → %s\n",
-                    candidate == ControlSource::Footswitch      ? "Footswitch"      :
-                    candidate == ControlSource::ExpressionPedal ? "ExpressionPedal" :
-                    candidate == ControlSource::MidiKeyboard    ? "MidiKeyboard"    :
-                                                                  "MidiBeatSync");
+                if (inputQueue) {
+                    InputEvent ev{};
+                    ev.type        = EventType::SourceChange;
+                    ev.data.source = current;
+                    (void)xQueueSend(inputQueue, &ev, 0);
+                }
+
+                Serial.printf("[source] → %s\n", sourceName(current));
             }
             stableFor = DEBOUNCE_COUNT; // clamp to avoid overflow
         }

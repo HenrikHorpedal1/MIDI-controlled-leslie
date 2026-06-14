@@ -2,14 +2,20 @@
 #pragma once
 
 #include <Arduino.h>
+#include <cstdint>
 
-enum class Rotor : uint8_t { Horn, Drum };
+// Operator intent (Park is a controller-internal state, not an intent — it is
+// the terminal state of a Velocity(0) request once the rotor has slowed).
+enum class DriveMode : uint8_t { Velocity, BeatSync };
 
-struct ReferenceState {
-    float angleDeg;
-    float velRPM;
+// A single, coherent snapshot of what the operator wants. Written as a whole by
+// exactly one producer (the input handler) and read by the controller.
+struct Reference {
+    DriveMode mode;
+    float     hornRPM;
+    float     drumRPM;
 };
 
 void referenceInit();
-void referenceSet(Rotor rotor, const ReferenceState &ref);
-void referenceGet(Rotor rotor, ReferenceState &out);
+void referenceSet(const Reference &ref);
+void referenceGet(Reference &out);

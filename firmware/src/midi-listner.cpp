@@ -15,7 +15,7 @@ volatile uint32_t g_noteOnSeen      = 0;
 volatile uint32_t g_noteOnMatched   = 0;
 
 static constexpr uint8_t MIDI_TARGET_CHANNEL = 1;
-static constexpr uint8_t MIDI_TARGET_CC      = 7;
+// CC numbers (MIDI_RATE_CC, MIDI_SUBDIV_CC) are declared in midi-listner.h.
 
 static constexpr uint8_t PAD_CHANNEL   = 10;
 static constexpr uint8_t PAD_NOTE_E1   = 40;
@@ -67,12 +67,19 @@ static void onSongPos(unsigned int spp) {
   pushClockMsg(ClockMsgType::SongPosition, (uint16_t)spp);
 }
 static void onControlChange(uint8_t channel, uint8_t control, uint8_t value) {
+  // DEBUG: every CC the device sends, with its channel/number, before filtering.
+  Serial.printf("[midi] CC ch=%u ctrl=%u val=%u\n", channel, control, value);
   if (channel != MIDI_TARGET_CHANNEL) return;
-  if (control != MIDI_TARGET_CC) return;
+  if (control != MIDI_RATE_CC && control != MIDI_SUBDIV_CC &&
+      control != MIDI_SUSTAIN_CC)
+    return;
 
+  // Routing (rate vs. subdivision vs. sustain) is decided by the input handler
+  // based on the active mode, so just forward which CC and its value.
   InputEvent ev{};
-  ev.source = InputSource::MidiCC;
-  ev.data.midiCC.value = value; // 0..127
+  ev.type = EventType::MidiCC;
+  ev.data.midiCC.control = control;
+  ev.data.midiCC.value   = value; // 0..127
   pushEvent(ev);
 
 }
@@ -87,7 +94,7 @@ static void onNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
 
   g_noteOnMatched++;
   InputEvent ev{};
-  ev.source = InputSource::MidiButton;
+  ev.type = EventType::MidiButton;
   ev.data.midiButton = noteToButton(note);
   pushEvent(ev);
 

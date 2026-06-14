@@ -1,7 +1,15 @@
 // input_handler.cpp
+//
+// The input handler is the SINGLE producer of operator intent. Every input —
+// footswitch, MIDI, and rotary mode changes — arrives here as an InputEvent.
+// The handler tracks the active input source, maps events to a working
+// Reference, and publishes the whole Reference as one coherent snapshot. The
+// controller reads only that snapshot (plus the clock and its own feedback).
 #include "input_event.h"
-#include "mode-selector.h"
+#include "source-selector.h"
 #include "reference.h"
+#include "beat_sync.h"
+#include "midi-listner.h"
 #include <Arduino.h>
 
 #include "freertos/FreeRTOS.h"
@@ -12,7 +20,6 @@ constexpr float HORN_CHORALE_RPM = 40.0f;
 constexpr float HORN_TREMOLO_RPM = 420.0f;
 constexpr float DRUM_CHORALE_RPM = 35.0f;
 constexpr float DRUM_TREMOLO_RPM = 350.0f;
-constexpr int CC_DEADBAND = 15;
 
 static QueueHandle_t g_inputQueue = nullptr;
 
@@ -35,85 +42,121 @@ static float midiCCToRPM(uint8_t ccVal) {
   return rpm;
 }
 
+// ---------------------------------------------------------------------------
+// Per-mode handlers. Dispatch is mode-first: the active source picks the
+// handler, and each handler interprets only the input events it cares about
+// (ignoring the rest, e.g. stray MIDI while the footswitch is active). They
+// update the working Reference's RPM fields; the caller publishes it.
+// ---------------------------------------------------------------------------
+
+static void handleFootswitch(Reference &ref, const InputEvent &ev) {
+  if (ev.type != EventType::Footswitch)
+    return;
+
+  const FootswitchState &fs = ev.data.foot;
+  if (fs.swA && fs.swB) {
+    ref.hornRPM = HORN_TREMOLO_RPM;
+    ref.drumRPM = DRUM_TREMOLO_RPM;
+  } else if (fs.swA) {
+    ref.hornRPM = HORN_CHORALE_RPM;
+    ref.drumRPM = DRUM_CHORALE_RPM;
+  } else {
+    ref.hornRPM = ref.drumRPM = 0.0f;
+  }
+}
+
+static void handleExpressionPedal(Reference &ref, const InputEvent &ev) {
+  if (ev.type != EventType::ExpPedal)
+    return;
+  // TODO: Implement when exp-pedal driver is implemented.
+}
+
+static void handleMidiKeyboard(Reference &ref, const InputEvent &ev) {
+  switch (ev.type) {
+  case EventType::MidiButton:
+    switch (ev.data.midiButton) {
+    case MidiButtonEvent::BUTTON0:
+      ref.hornRPM = HORN_CHORALE_RPM;
+      ref.drumRPM = DRUM_CHORALE_RPM;
+      break;
+    case MidiButtonEvent::BUTTON1:
+      ref.hornRPM = ref.drumRPM = 0.0f;
+      break;
+    case MidiButtonEvent::BUTTON2:
+      ref.hornRPM = HORN_TREMOLO_RPM;
+      ref.drumRPM = DRUM_TREMOLO_RPM;
+      break;
+    }
+    break;
+
+  case EventType::MidiCC: {
+    const MidiCCEvent &cc = ev.data.midiCC;
+    if (cc.control == MIDI_RATE_CC) {
+      // Free-running rate -> RPM.
+      const float rpm = midiCCToRPM(cc.value);
+      ref.hornRPM = rpm;
+      ref.drumRPM = rpm * (DRUM_TREMOLO_RPM / HORN_TREMOLO_RPM);
+    } else if (cc.control == MIDI_SUSTAIN_CC) {
+      // TODO: define sustain pedal behavior.
+    }
+    // Other CCs (e.g. subdivision) are ignored in keyboard mode.
+    break;
+  }
+
+  default:
+    // Footswitch / exp-pedal events ignored in MIDI keyboard mode.
+    break;
+  }
+}
+
+static void handleBeatSync(const InputEvent &ev) {
+  // Only the subdivision CC is meaningful here; it is committed to beat_sync's
+  // own validated state. Rotor speed comes from the MIDI clock, consumed by the
+  // controller task directly — so nothing in the Reference changes here.
+  if (ev.type != EventType::MidiCC)
+    return;
+  if (ev.data.midiCC.control != MIDI_SUBDIV_CC)
+    return;
+  beatSyncSetSubdivisionFromCC(ev.data.midiCC.value);
+}
+
 void inputHandlerTask(void *pvParameters) {
   g_inputQueue = static_cast<QueueHandle_t>(pvParameters);
+
+  // Active input source is learned from SourceChange events (the source
+  // selector emits one at startup), so this initial value is only used until then.
+  InputSource activeSource = InputSource::Footswitch;
+  Reference   ref          = {DriveMode::Velocity, 0.0f, 0.0f};
 
   InputEvent ev;
 
   for (;;) {
     if (xQueueReceive(g_inputQueue, &ev, portMAX_DELAY) == pdTRUE) {
-
-      // const ControlSource activeSource = modeSelectorGetSource();
-      // for testing now:
-      const ControlSource activeSource = ControlSource::Footswitch;
-
-      switch (ev.source) {
-
-      case InputSource::Footswitch: {
-        if (activeSource != ControlSource::Footswitch)
+      if (ev.type == EventType::SourceChange) {
+        activeSource = ev.data.source;
+        ref.mode = (activeSource == InputSource::MidiBeatSync)
+                       ? DriveMode::BeatSync
+                       : DriveMode::Velocity;
+        // RPM is intentionally preserved across a source switch: the rotor keeps
+        // doing what it did until the newly-selected source issues a command.
+      } else {
+        switch (activeSource) {
+        case InputSource::Footswitch:
+          handleFootswitch(ref, ev);
           break;
-
-        const FootswitchState &fs = ev.data.foot;
-        ReferenceState horn, drum;
-        horn.angleDeg = drum.angleDeg = 0.0f;
-        if (fs.swA && fs.swB) {
-          horn.velRPM = HORN_TREMOLO_RPM;
-          drum.velRPM = DRUM_TREMOLO_RPM;
-        } else if (fs.swA) {
-          horn.velRPM = HORN_CHORALE_RPM;
-          drum.velRPM = DRUM_CHORALE_RPM;
-        } else {
-          horn.velRPM = drum.velRPM = 0.0f;
-        }
-        referenceSet(Rotor::Horn, horn);
-        referenceSet(Rotor::Drum, drum);
-        break;
-      }
-
-      case InputSource::ExpPedal: {
-        if (activeSource != ControlSource::ExpressionPedal)
+        case InputSource::ExpressionPedal:
+          handleExpressionPedal(ref, ev);
           break;
-        // TODO: Implement when driver is implemented.
-        break;
-      }
-
-      case InputSource::MidiCC: {
-        if (activeSource != ControlSource::MidiKeyboard)
+        case InputSource::MidiKeyboard:
+          handleMidiKeyboard(ref, ev);
           break;
-
-        float rpm = midiCCToRPM(ev.data.midiCC.value);
-        ReferenceState horn = {0.0f, rpm};
-        ReferenceState drum = {0.0f,
-                               rpm * (DRUM_TREMOLO_RPM / HORN_TREMOLO_RPM)};
-        referenceSet(Rotor::Horn, horn);
-        referenceSet(Rotor::Drum, drum);
-        break;
-      }
-
-      case InputSource::MidiButton: {
-        if (activeSource != ControlSource::MidiKeyboard)
-          break;
-
-        ReferenceState horn = {0.0f, 0.0f};
-        ReferenceState drum = {0.0f, 0.0f};
-        switch (ev.data.midiButton) {
-        case MidiButtonEvent::BUTTON0:
-          horn.velRPM = HORN_CHORALE_RPM;
-          drum.velRPM = DRUM_CHORALE_RPM;
-          break;
-        case MidiButtonEvent::BUTTON1:
-          horn.velRPM = drum.velRPM = 0.0f;
-          break;
-        case MidiButtonEvent::BUTTON2:
-          horn.velRPM = HORN_TREMOLO_RPM;
-          drum.velRPM = DRUM_TREMOLO_RPM;
+        case InputSource::MidiBeatSync:
+          handleBeatSync(ev);
           break;
         }
-        referenceSet(Rotor::Horn, horn);
-        referenceSet(Rotor::Drum, drum);
-        break;
       }
-      }
+
+      referenceSet(ref); // publish one coherent snapshot
     }
   }
 }

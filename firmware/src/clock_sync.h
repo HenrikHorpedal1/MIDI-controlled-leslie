@@ -25,6 +25,7 @@ bool     clockSyncIsRunning();
 double   clockSyncGetBpm();        // smoothed BPM
 uint64_t clockSyncGetTickCount();  // MIDI clocks since last Start/Continue (or SPP)
 float    clockSyncGetPhase();      // 0..1 phase within one MIDI clock tick (smoothed)
+double   clockSyncGetTickPosition(); // continuous absolute tick position (ticks + fraction, unclamped)
 double clockSyncGetPeriodUs();
 double clockSyncGetLastErrUs();
 bool   clockSyncIsLocked();

@@ -31,6 +31,32 @@ bool g_initialized = false;
 Moteus &hornMoteus() { return g_horn; }
 Moteus &drumMoteus() { return g_drum; }
 
+namespace {
+mm::PositionMode::Format makePositionFmt() {
+  mm::PositionMode::Format f;
+  f.accel_limit = mm::kFloat;
+  f.velocity_limit = mm::kFloat;
+  return f;
+}
+
+mm::Query::Format makeQueryFmt() {
+  mm::Query::Format f;
+  f.position = mm::kFloat;
+  f.velocity = mm::kFloat;
+  f.extra[0].register_number = mm::Register(0x052); // Encoder 1 position
+  f.extra[0].resolution = mm::kFloat;
+  f.extra[1].register_number = mm::Register(0x053); // Encoder 1 velocity
+  f.extra[1].resolution = mm::kFloat;
+  return f;
+}
+
+const mm::PositionMode::Format g_positionFmt = makePositionFmt();
+const mm::Query::Format g_queryFmt = makeQueryFmt();
+} // namespace
+
+const mm::PositionMode::Format &lesliePositionFmt() { return g_positionFmt; }
+const mm::Query::Format &leslieQueryFmt() { return g_queryFmt; }
+
 bool configureMoteus(Print &debug) {
   if (g_initialized)
     return true;

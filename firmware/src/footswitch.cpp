@@ -96,7 +96,7 @@ void footSwitchTask(void *pvParameters)
             else if (c == '0') { sa = false; sb = false; }
             if (c == '0' || c == '1' || c == '2') {
                 InputEvent ev;
-                ev.source    = InputSource::Footswitch;
+                ev.type      = EventType::Footswitch;
                 ev.data.foot = FootswitchState{ sa, sb };
                 xQueueSend(s_inputQueue, &ev, 0);
             }
@@ -109,7 +109,7 @@ void footSwitchTask(void *pvParameters)
         //notify if there was a change
         if ((a != lastA || b != lastB) && s_inputQueue != nullptr) {
             InputEvent ev;
-            ev.source    = InputSource::Footswitch;
+            ev.type      = EventType::Footswitch;
             ev.data.foot = FootswitchState{ a, b };
 
             xQueueSend(s_inputQueue, &ev, 0);

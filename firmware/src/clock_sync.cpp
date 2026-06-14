@@ -206,6 +206,27 @@ float clockSyncGetPhase() {
   return (float)phase;
 }
 
+double clockSyncGetTickPosition() {
+  // Continuous absolute tick position (whole ticks + fraction) extrapolated from
+  // the filtered model. Unlike clockSyncGetPhase(), the fraction is NOT clamped
+  // to [0,1], so tickCount + fraction stays C0-continuous across tick boundaries
+  // (no stall/snap). Intended for use as an absolute phase position; modulation
+  // users wanting a 0..1 ramp should use clockSyncGetPhase() instead.
+  const int64_t now = esp_timer_get_time();
+
+  portENTER_CRITICAL(&s_mux);
+  const bool     locked   = s_locked;
+  const double   period   = s_periodUs;
+  const double   nextPred = s_nextPredUs;
+  const uint64_t n        = s_tickCount;
+  portEXIT_CRITICAL(&s_mux);
+
+  if (!locked || period <= 0.0 || nextPred <= 0.0) return (double)n;
+  // n is the count of the last processed tick; the next tick is predicted at
+  // nextPred, so we are (1 - timeToNext/period) of a tick past it.
+  return (double)n + 1.0 - (nextPred - (double)now) / period;
+}
+
 bool clockSyncIsLocked() {
   portENTER_CRITICAL(&s_mux);
   bool v = s_locked;
