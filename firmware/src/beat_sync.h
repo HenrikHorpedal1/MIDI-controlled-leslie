@@ -17,9 +17,10 @@
 //   - R = 8/3 (dotted)          -> drumTicks = (4/3) * hornTicks (8:3; drum sits
 //                                  on the slower straight beat, horn floats
 //                                  dotted figures over it)
-// Ordered slowest -> fastest so the discrete MIDI CC value (1,2,3,...) maps
-// straight to the enum index (CC value 0 is reserved/ignored, see below).
+// Ordered slowest -> fastest. CC 0 is reserved (gate off); CC 1 maps to index
+// 0 (Rest); CC 2..N map to subdivision indices 1..N-1.
 enum class Subdivision : uint8_t {
+  Rest,                // beat sync active but rotors parked
   Half,                // perceived 1/2   - horn 96 ticks @ 24 PPQN, R=2
   Quarter,             // perceived 1/4   - horn 48, R=2
   EighthDotted,        // perceived 1/8.  - horn 36, R=8/3
@@ -34,7 +35,7 @@ enum class Subdivision : uint8_t {
   ThirtySecondTriplet  // perceived 1/32T - horn  4, R=3
 };
 
-static constexpr uint8_t SUBDIVISION_COUNT = 12;
+static constexpr uint8_t SUBDIVISION_COUNT = 13;
 
 // MIDI clock runs at 24 pulses per quarter note.
 static constexpr uint16_t MIDI_PPQN = 24;
@@ -43,9 +44,9 @@ static constexpr uint16_t MIDI_PPQN = 24;
 uint16_t subdivisionHornTicks(Subdivision s);
 uint16_t subdivisionDrumTicks(Subdivision s);
 
-// Set the active subdivision from a discrete CC value. CC value 0 is reserved
-// (keyboard gate "off") and ignored; values 1..SUBDIVISION_COUNT map to
-// subdivision index 0..SUBDIVISION_COUNT-1, clamped at the top. Thread-safe.
+// Set the active subdivision from a discrete CC value. CC 0 is reserved
+// (keyboard gate "off") and ignored. CC 1 selects Rest (rotors park). CC 2..N
+// map to subdivision index 1..N-1, clamped at the top. Thread-safe.
 void beatSyncSetSubdivisionFromCC(uint8_t ccValue);
 
 // Thread-safe getters.

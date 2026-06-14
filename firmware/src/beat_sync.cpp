@@ -24,6 +24,7 @@ struct SubdivInfo {
 
 static SubdivInfo subdivInfo(Subdivision s) {
   switch (s) {
+    case Subdivision::Rest:                return { 0, 2, 1}; // ticks=0; rotors park
     case Subdivision::Half:                return {96, 2, 1};
     case Subdivision::Quarter:             return {48, 2, 1};
     case Subdivision::EighthDotted:        return {36, 8, 3};
@@ -60,16 +61,17 @@ void beatSyncSetSubdivisionFromCC(uint8_t ccValue) {
   if (index >= SUBDIVISION_COUNT) index = SUBDIVISION_COUNT - 1;
   const Subdivision s = static_cast<Subdivision>(index);
 
-  // Silently deny a subdivision whose faster rotor would exceed the speed cap
-  // at the current tempo; the previously-selected subdivision stays active.
-  const double bpm = clockSyncGetBpm();
-  const uint16_t fastTicks =
-      min(subdivisionHornTicks(s), subdivisionDrumTicks(s));
-  const double rpm = bpm * (double)MIDI_PPQN / (double)fastTicks;
-  if (rpm > BEAT_MAX_RPM) {
-    Serial.printf("[beatsync] subdiv CC=%u denied: %.0f RPM > %.0f cap @ %.1f BPM\n",
-                  ccValue, rpm, BEAT_MAX_RPM, bpm);
-    return;
+  // Rest parks the rotors — no speed to cap.
+  if (s != Subdivision::Rest) {
+    const double bpm = clockSyncGetBpm();
+    const uint16_t fastTicks =
+        min(subdivisionHornTicks(s), subdivisionDrumTicks(s));
+    const double rpm = bpm * (double)MIDI_PPQN / (double)fastTicks;
+    if (rpm > BEAT_MAX_RPM) {
+      Serial.printf("[beatsync] subdiv CC=%u denied: %.0f RPM > %.0f cap @ %.1f BPM\n",
+                    ccValue, rpm, BEAT_MAX_RPM, bpm);
+      return;
+    }
   }
 
   portENTER_CRITICAL(&s_mux);
