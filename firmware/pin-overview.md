@@ -27,14 +27,6 @@ Pins are multiplexed — each pin acts as input or output depending on the opera
 | SCK    | D13         | GPIO48        | SPI Clock                      |
 | INT    | D9          | GPIO18        | Interrupt                      |
 
-## IR Sensors
-
-| Sensor | Arduino Pin | ESP32-S3 GPIO |
-|--------|-------------|---------------|
-| IR_A   | D7          | GPIO10        |
-| IR_B   | D8          | GPIO17        |
-| IR_C   | D9          | GPIO18        |
-
 ## Mode Selector (Rotary Switch + SPDT)
 
 | Signal           | Arduino Pin | ESP32-S3 GPIO | Notes                                     |
