@@ -10,6 +10,9 @@ __pycache__/
 ~*.kicad_*
 fp-info-cache
 .history/
+*.log
+*.txt
+
 
 # Local-only Claude Code guidance (not committed)
 CLAUDE.md
