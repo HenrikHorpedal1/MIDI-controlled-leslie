@@ -468,6 +468,11 @@ void controllerTask(void *pvParameters) {
           // (encoder/mechanical), not beat-locked.
           "horn_pos_frac",(float)(horn.lastPosRevs - floor(horn.lastPosRevs)),
           "drum_pos_frac",(float)(drum.lastPosRevs - floor(drum.lastPosRevs)));
+      // Phase error in ms: constant across tempos when the offset is a fixed
+      // time delay; grows with BPM when it is a fixed angle (BEAT_HOME_FRAC).
+      Telemetry.send(
+          "horn_err_ms",(horn.dbgCmdVel > 0.01) ? (float)(horn.dbgPhaseErrDeg / 360.0 / horn.dbgCmdVel * 1000.0) : 0.0f,
+          "drum_err_ms",(drum.dbgCmdVel > 0.01) ? (float)(drum.dbgPhaseErrDeg / 360.0 / drum.dbgCmdVel * 1000.0) : 0.0f);
       // Output encoders + fused load estimate (state_estimator):
       //   *_enc0_frac = onboard output position (the control source),
       //   *_enc1_frac = MA600 (true load, sources[1]),
