@@ -94,16 +94,14 @@ uint16_t beatSyncGetDrumTicksPerCycle() {
   return subdivisionDrumTicks(beatSyncGetSubdivision());
 }
 
-// Rotor face offset to align with the beat (0..1 rev).
-static constexpr double BEAT_HOME_FRAC = 0.0;
+// Rotor face offset to align with the beat (0..1 rev). -11.25/360 places the
+// leading edge of the 22.5-deg horn opening at the mic exactly on the beat.
+static constexpr double BEAT_HOME_FRAC = -11.25 / 360.0;
 
 static BeatTarget beatTarget(uint16_t ticksPerCycle) {
   const double tpc = (double)ticksPerCycle;
   // revs/s = (MIDI ticks/s) / (ticks per cycle): one rotor revolution per cycle.
   const double ticksPerSec = clockSyncGetBpm() / 60.0 * (double)MIDI_PPQN;
-  // Continuous (unclamped) tick position: commanded as an absolute rotor face,
-  // so it must stay C0-continuous across tick boundaries. clockSyncGetPhase()'s
-  // [0,1] clamp would stair-step facePos and make the rotor hunt.
   const double clockTicks = clockSyncGetTickPosition();
   return {ticksPerSec / tpc, clockTicks / tpc + BEAT_HOME_FRAC};
 }
