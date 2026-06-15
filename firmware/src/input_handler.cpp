@@ -21,6 +21,10 @@ constexpr float HORN_TREMOLO_RPM = 420.0f;
 constexpr float DRUM_CHORALE_RPM = 35.0f;
 constexpr float DRUM_TREMOLO_RPM = 350.0f;
 
+// Footswitch Chorale runs a touch faster than the MIDI-triggered Chorale.
+constexpr float FOOT_HORN_CHORALE_RPM = 50.0f;
+constexpr float FOOT_DRUM_CHORALE_RPM = 44.0f;
+
 static QueueHandle_t g_inputQueue = nullptr;
 
 static float midiCCToRPM(uint8_t ccVal) {
@@ -58,8 +62,8 @@ static void handleFootswitch(Reference &ref, const InputEvent &ev) {
     ref.hornRPM = HORN_TREMOLO_RPM;
     ref.drumRPM = DRUM_TREMOLO_RPM;
   } else if (fs.swA) {
-    ref.hornRPM = HORN_CHORALE_RPM;
-    ref.drumRPM = DRUM_CHORALE_RPM;
+    ref.hornRPM = FOOT_HORN_CHORALE_RPM;
+    ref.drumRPM = FOOT_DRUM_CHORALE_RPM;
   } else {
     ref.hornRPM = ref.drumRPM = 0.0f;
   }
