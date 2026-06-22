@@ -1,5 +1,5 @@
-// midi.cpp
-#include "midi-listner.h"
+// midi-listener.cpp
+#include "midi-listener.h"
 
 #include <Adafruit_TinyUSB.h>
 #include <MIDI.h>
@@ -10,33 +10,14 @@
 #include "esp_timer.h"
 
 
-volatile uint32_t g_usbMidiNotifies = 0;
-volatile uint32_t g_noteOnSeen      = 0;
-volatile uint32_t g_noteOnMatched   = 0;
-
 static constexpr uint8_t MIDI_TARGET_CHANNEL = 1;
-// CC numbers (MIDI_RATE_CC, MIDI_SUBDIV_CC) are declared in midi-listner.h.
-
-static constexpr uint8_t PAD_CHANNEL   = 10;
-static constexpr uint8_t PAD_NOTE_E1   = 40;
-static constexpr uint8_t PAD_NOTE_F1   = 41;
-static constexpr uint8_t PAD_NOTE_FS1  = 42;
+// CC numbers (MIDI_RATE_CC, MIDI_SUBDIV_CC, MIDI_BUTTON_CC, MIDI_SUSTAIN_CC) are
+// declared in midi-listener.h.
 
 static Adafruit_USBD_MIDI usb_midi;
 static MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, usb_midi, MIDI);
 
 static QueueHandle_t s_inputQueue = nullptr;
-
-static inline bool isPadNote(uint8_t n) {
-  return n == PAD_NOTE_E1 || n == PAD_NOTE_F1 || n == PAD_NOTE_FS1;
-}
-
-static MidiButtonEvent noteToButton(uint8_t note) {
-  if (note == PAD_NOTE_E1)  return MidiButtonEvent::BUTTON0;
-  if (note == PAD_NOTE_F1)  return MidiButtonEvent::BUTTON1;
-  if (note == PAD_NOTE_FS1) return MidiButtonEvent::BUTTON2;
-  return MidiButtonEvent::BUTTON0;
-}
 
 static inline void pushEvent(const InputEvent& ev) {
   if (s_inputQueue) {
@@ -67,9 +48,19 @@ static void onSongPos(unsigned int spp) {
   pushClockMsg(ClockMsgType::SongPosition, (uint16_t)spp);
 }
 static void onControlChange(uint8_t channel, uint8_t control, uint8_t value) {
-  // DEBUG: every CC the device sends, with its channel/number, before filtering.
-  Serial.printf("[midi] CC ch=%u ctrl=%u val=%u\n", channel, control, value);
   if (channel != MIDI_TARGET_CHANNEL) return;
+
+  // Keyboard-mode buttons arrive on one CC: value 1/2/3 = press of button 0/1/2,
+  // value 0 = release (ignored — the buttons are momentary, the handler latches).
+  if (control == MIDI_BUTTON_CC) {
+    if (value < 1 || value > 3) return; // 0 = release, or out of range
+    InputEvent ev{};
+    ev.type = EventType::MidiButton;
+    ev.data.midiButton = static_cast<MidiButtonEvent>(value - 1); // 1..3 -> BUTTON0..2
+    pushEvent(ev);
+    return;
+  }
+
   if (control != MIDI_RATE_CC && control != MIDI_SUBDIV_CC &&
       control != MIDI_SUSTAIN_CC)
     return;
@@ -81,28 +72,11 @@ static void onControlChange(uint8_t channel, uint8_t control, uint8_t value) {
   ev.data.midiCC.control = control;
   ev.data.midiCC.value   = value; // 0..127
   pushEvent(ev);
-
-}
-
-// Toggle logic: only act on real presses (NoteOn with velocity > 0).
-// Many devices send NoteOff as NoteOn with velocity == 0.
-static void onNoteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
-  g_noteOnSeen++;
-  if (channel != PAD_CHANNEL) return;
-  if (!isPadNote(note)) return;
-  if (velocity == 0) return; // treat as release, ignore
-
-  g_noteOnMatched++;
-  InputEvent ev{};
-  ev.type = EventType::MidiButton;
-  ev.data.midiButton = noteToButton(note);
-  pushEvent(ev);
-
 }
 
 static TaskHandle_t s_midiTaskHandle = nullptr;
 
-void midiListnerTask(void *pvParameters) {
+void midiListenerTask(void *pvParameters) {
   auto* p = static_cast<MidiTaskParams*>(pvParameters);
   s_inputQueue = p->inputQueue;
   s_clockQueue = p->clockQueue;
@@ -111,7 +85,6 @@ void midiListnerTask(void *pvParameters) {
   MIDI.turnThruOff();
 
   MIDI.setHandleControlChange(onControlChange);
-  MIDI.setHandleNoteOn(onNoteOn);
 
   MIDI.setHandleClock(onClock);
   MIDI.setHandleStart(onStart);
@@ -123,7 +96,8 @@ void midiListnerTask(void *pvParameters) {
     // Drain parser; callbacks fire here
     while (MIDI.read()) {}
 
-    // Polling delay: for USB MIDI, 1ms is usually totally fine.
-    vTaskDelay(1);
+    // Polling delay: for USB MIDI, 1ms is usually totally fine. (Busy-waiting a
+    // shorter period here starves the low-priority telemetry/UDP task.)
+    vTaskDelay(pdMS_TO_TICKS(1));
   }
 }

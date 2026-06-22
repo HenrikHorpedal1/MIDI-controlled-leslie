@@ -1,5 +1,5 @@
 #include "clock_sync.h"
-#include "midi-listner.h"
+#include "midi-listener.h"
 #include "input_event.h"
 
 static QueueHandle_t inputQueue;
@@ -15,7 +15,7 @@ void setup() {
 
   midiParams = { inputQueue, clockQueue };
 
-  xTaskCreatePinnedToCore(midiListnerTask, "midi", 4096, &midiParams, 3, nullptr, 1);
+  xTaskCreatePinnedToCore(midiListenerTask, "midi", 4096, &midiParams, 3, nullptr, 1);
   xTaskCreatePinnedToCore(clockSyncTask,   "clk",  4096, clockQueue,  2, nullptr, 1);
 }
 
