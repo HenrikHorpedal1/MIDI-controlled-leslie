@@ -1,0 +1,9 @@
+{
+  "autodeskProduct": "Fusion360",
+  "type": "script",
+  "engine": "Python",
+  "entrypoint": "Set Group Mass.py",
+  "description": "Select multiple bodies, enter their combined measured mass, and apply a single custom material (same density) to all of them.",
+  "author": "",
+  "version": "1.0.0"
+}
