@@ -5,6 +5,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "telemetry_log.h"
 
 // --------- Tunables ----------
 static constexpr double BPM_MIN = 30.0;
@@ -41,8 +42,11 @@ static bool     s_locked    = false;
 static uint64_t s_tickCount = 0;
 
 static int64_t  s_lastTickUs = 0;     // last observed tick time
+static int64_t  s_runStartUs = 0;     // time of the last Start/Continue (watchdog ref)
 static double   s_periodUs   = bpmToTickPeriodUs(120.0); // initial guess
 static double   s_nextPredUs = 0;     // predicted time for next tick
+static double   s_rawPeriodUs = 0;    // last raw inter-tick interval (pre-filter, for scoping)
+static double   s_xEstErrUs   = 0;    // post-filter residual: t - xEst (for scoping)
 
 static uint16_t s_pendingSpp = 0;
 static bool     s_haveSpp    = false;
@@ -57,6 +61,7 @@ static void resetLockKeepPeriod() {
 
 static void onStartCommon(bool resetTickCount) {
   s_running = true;
+  s_runStartUs = esp_timer_get_time(); // watchdog reference until the first tick
   resetLockKeepPeriod();
   if (resetTickCount) s_tickCount = 0;
   if (s_haveSpp) {
@@ -75,9 +80,14 @@ static void processTick(int64_t t_us) {
   const double periodMax = bpmToTickPeriodUs(BPM_MIN);
 
   if (!s_locked) {
-    // Need 2 ticks to lock. First tick just arms.
+    // Need 2 ticks to lock. The first tick just arms — but it IS an observed
+    // tick, so count it; otherwise s_tickCount (and the absolute tick position
+    // beat_sync derives phase from) stays a full tick behind after every
+    // (re)start, a subdivision-dependent offset (1/tpc) a single home offset
+    // can't fully absorb.
     if (s_lastTickUs == 0) {
       s_lastTickUs = t_us;
+      s_tickCount++;
       return;
     }
     const int64_t dt = t_us - s_lastTickUs;
@@ -101,6 +111,8 @@ static void processTick(int64_t t_us) {
   const double xPred = s_nextPredUs;
   double err = (double)t_us - xPred;          // residual: positive if tick late
   s_lastErrUs = err;
+  // Scoping: raw inter-tick interval (the noisy input the smoother sees).
+  s_rawPeriodUs = (double)(t_us - s_lastTickUs);
 
   // Clamp residual to reject USB jitter / outliers.
   const double errClamp = 0.50 * s_periodUs;
@@ -111,6 +123,10 @@ static void processTick(int64_t t_us) {
 
   // Position update:  x = x_pred + g * err  (smoothed estimate of this tick)
   const double xEst = xPred + (G_ALPHA * err);
+  // Scoping: residual after the smoother corrects this tick. |xEstErr| < |err|
+  // means the filter is pulling the estimate toward the real tick (working);
+  // a persistent nonzero mean here is a true timing bias, not jitter.
+  s_xEstErrUs = (double)t_us - xEst;
 
   // Predict next tick: x + v
   s_lastTickUs = t_us;
@@ -149,14 +165,39 @@ void clockSyncTask(void* pvQueueHandle) {
           processTick(msg.t_us);
           break;
       }
+      // Capture clock state under the same lock, then publish to the telemetry
+      // bus after releasing it (telemetryLog must not run inside the spinlock).
+      const float bpm       = (float)tickPeriodUsToBpm(s_periodUs);
+      const float errUs     = (float)s_lastErrUs;
+      const float filtPerUs = (float)s_periodUs;
+      const float rawPerUs  = (float)s_rawPeriodUs;
+      const float xEstErrUs = (float)s_xEstErrUs;
+      const bool  running   = s_running;
+      const bool  locked    = s_locked;
       portEXIT_CRITICAL(&s_mux);
+
+      // clock/ branch (matches the controller telemetry tree). To judge the
+      // smoother, overlay raw_period_us (noisy input) vs period_us (filtered
+      // output): if the filter works, period_us is flat while raw jitters.
+      // pred_err_us = pre-filter residual (measured - predicted tick time, +ve
+      // if late); xest_err_us = residual AFTER the alpha correction. A persistent
+      // nonzero mean on either is a true timing bias (lead/lag), not jitter.
+      telemetryLog("clock/bpm", bpm);
+      telemetryLog("clock/period_us", filtPerUs);
+      telemetryLog("clock/raw_period_us", rawPerUs);
+      telemetryLog("clock/pred_err_us", errUs);
+      telemetryLog("clock/xest_err_us", xEstErrUs);
+      telemetryLog("clock/running", running ? 1.0f : 0.0f);
+      telemetryLog("clock/locked", locked ? 1.0f : 0.0f);
     } else {
-      // Timeout: if running but no ticks for a while, assume clock stopped.
+      // Timeout: if running but no ticks for a while, assume clock stopped. Use
+      // the last tick once we have one, else the Start time — so a Start with no
+      // following clock still times out instead of latching s_running forever.
       const int64_t now = esp_timer_get_time();
       portENTER_CRITICAL(&s_mux);
-      if (s_running && s_lastTickUs != 0) {
-        // If no tick for >500ms, consider it stopped/lost
-        if ((now - s_lastTickUs) > 500000) {
+      if (s_running) {
+        const int64_t ref = (s_lastTickUs != 0) ? s_lastTickUs : s_runStartUs;
+        if (ref != 0 && (now - ref) > 500000) { // >500 ms idle
           s_running = false;
           resetLockKeepPeriod();
         }
@@ -167,6 +208,20 @@ void clockSyncTask(void* pvQueueHandle) {
 }
 
 // --------- Public getters ----------
+void clockSyncGetSnapshot(ClockSnapshot& out) {
+  portENTER_CRITICAL(&s_mux);
+  const int64_t now = esp_timer_get_time();
+  out.running = s_running;
+  out.locked  = s_locked;
+  out.bpm     = tickPeriodUsToBpm(s_periodUs);
+  if (s_locked && s_periodUs > 0.0 && s_nextPredUs > 0.0)
+    out.tickPosition =
+        (double)s_tickCount + 1.0 - (s_nextPredUs - (double)now) / s_periodUs;
+  else
+    out.tickPosition = (double)s_tickCount;
+  portEXIT_CRITICAL(&s_mux);
+}
+
 bool clockSyncIsRunning() {
   portENTER_CRITICAL(&s_mux);
   const bool r = s_running;
