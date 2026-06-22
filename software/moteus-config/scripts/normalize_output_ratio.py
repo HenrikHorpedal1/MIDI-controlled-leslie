@@ -2,13 +2,22 @@
 """Rescale motor_position.rotor_to_output_ratio and adjust PID gains proportionally.
 
 When rotor_to_output_ratio changes from old_R to new_R, reported output
-positions scale by new_R/old_R.  To keep the same physical torque response:
+positions scale by new_R/old_R.  Everything in pid_position is output-referenced,
+so a mechanical impedance reflects through the ratio as ratio^2: the position
+gains scale by (old_R/new_R)^2, while the torque-domain integral limits scale
+linearly by (old_R/new_R).  To keep the same physical response:
 
-    new_kp = old_kp * (old_R / new_R)
-    new_ki = old_ki * (old_R / new_R)
-    new_kd = old_kd * (old_R / new_R)
-    new_ilimit     = old_ilimit    * (new_R / old_R)   (accumulator in error units)
-    new_iratelimit = old_iratelimit * (new_R / old_R)
+    new_kp = old_kp * (old_R / new_R)**2
+    new_ki = old_ki * (old_R / new_R)**2
+    new_kd = old_kd * (old_R / new_R)**2
+    new_ilimit     = old_ilimit     * (old_R / new_R)
+    new_iratelimit = old_iratelimit * (old_R / new_R)
+
+servo.inertia_feedforward is torque per output acceleration; output acceleration
+reflects through the ratio exactly like output position (a_out = R * a_rotor), so
+it follows the same ratio^2 law as the position gains:
+
+    new_inertia_feedforward = old_inertia_feedforward * (old_R / new_R)**2
 
 Changes are written to RAM only — no 'conf write' is issued.
 
@@ -28,6 +37,8 @@ PID_GAIN_KEYS = [
     "servo.pid_position.kp",
     "servo.pid_position.ki",
     "servo.pid_position.kd",
+    # torque per output acceleration -> same ratio^2 reflection as the gains
+    "servo.inertia_feedforward",
 ]
 PID_LIMIT_KEYS = [
     "servo.pid_position.ilimit",
@@ -101,13 +112,15 @@ async def main() -> None:
 
     new_values: dict[str, float] = {}
     for key in PID_GAIN_KEYS:
-        new_values[key] = old_gains[key] * scale
+        # Gains are an output-referenced impedance -> reflect as ratio^2.
+        new_values[key] = old_gains[key] * scale * scale
     for key in PID_LIMIT_KEYS:
-        new_values[key] = old_gains[key] / scale  # limits scale inversely
+        # Torque-domain integral limits reflect linearly with the ratio.
+        new_values[key] = old_gains[key] * scale
     new_values[RATIO_KEY] = new_R
 
     print(f"\n  Scale factor: {old_R:.6g} / {new_R:.6g} = {scale:.6g}")
-    print(f"  gains × {scale:.6g},  limits × {1/scale:.6g}")
+    print(f"  gains × {scale*scale:.6g},  limits × {scale:.6g}")
     print("\n  New values:")
     for key, val in new_values.items():
         print(f"    {key}:  {old_gains.get(key, old_R):.9g}  →  {val:.9g}")

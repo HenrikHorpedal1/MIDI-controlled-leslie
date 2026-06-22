@@ -14,10 +14,8 @@ Slip model (Isermann):
 """
 
 import asyncio
-import csv
 import time
 import argparse
-from datetime import datetime
 
 import moteus
 import moteus.multiplex as mp_res
@@ -25,7 +23,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
 
-SETTLE_TIME = 10.0   # s to wait for steady state after velocity command
+from _artifacts import Run
+
+SETTLE_BUFFER = 4.0  # extra s after the ramp completes before capturing
 CAPTURE_TIME = 3.0   # s to average over
 SAMPLE_PERIOD = 0.01 # s between queries (~100 Hz)
 
@@ -44,17 +44,18 @@ def unwrap_fractional(prev, curr):
     return d
 
 
-async def measure_at_velocity(controller, v_cmd, qr):
+async def measure_at_velocity(controller, v_cmd, qr, accel, settle_buffer):
     """
     Command v_cmd [rev/s] on motor, wait for steady state, then capture
     CAPTURE_TIME seconds of data.
 
-    Returns (omega_m, omega_L, q_A) as scalar means over the capture window.
+    Returns (omega_m, omega_L, q_A, raw) as scalar means + per-sample list.
     """
-    # Keep sending the velocity command so the watchdog doesn't trip.
+    settle_time = abs(v_cmd) / accel + settle_buffer
     t_settle = time.monotonic()
-    while time.monotonic() - t_settle < SETTLE_TIME:
-        await controller.set_position(position=float("nan"), velocity=v_cmd, query=False)
+    while time.monotonic() - t_settle < settle_time:
+        await controller.set_position(position=float("nan"), velocity=v_cmd,
+                                      accel_limit=accel, query=False)
         await asyncio.sleep(SAMPLE_PERIOD)
 
     # ----- capture loop -----
@@ -66,10 +67,12 @@ async def measure_at_velocity(controller, v_cmd, qr):
     q_samples = []
     n = 0
 
+    raw = []
     while time.monotonic() - t_start < CAPTURE_TIME:
-        t = time.monotonic()
+        t = time.monotonic() - t_start
         result = await controller.set_position(
-            position=float("nan"), velocity=v_cmd, query=True, query_override=qr)
+            position=float("nan"), velocity=v_cmd, accel_limit=accel,
+            query=True, query_override=qr)
 
         enc = result.values[moteus.Register.ENCODER_1_POSITION]
         vm  = result.values[moteus.Register.VELOCITY]
@@ -81,6 +84,7 @@ async def measure_at_velocity(controller, v_cmd, qr):
         prev_enc = enc
         motor_vel_samples.append(vm)
         q_samples.append(q)
+        raw.append(dict(t=t, omega_m=vm, enc1_pos=enc, q_A=q))
         n += 1
         await asyncio.sleep(SAMPLE_PERIOD)
 
@@ -91,7 +95,7 @@ async def measure_at_velocity(controller, v_cmd, qr):
     omega_L = cum_enc_delta / elapsed if elapsed > 0 else float("nan")
     q_mean  = float(np.mean(q_samples))
 
-    return omega_m, omega_L, q_mean
+    return omega_m, omega_L, q_mean, raw
 
 
 # ---------------------------------------------------------------------------
@@ -114,15 +118,19 @@ async def main():
                         help="Maximum motor velocity [rev/s] (default 6.0)")
     parser.add_argument("--steps", type=int, default=8,
                         help="Number of velocity steps (default 8)")
-    parser.add_argument("--output", "-o", default=None,
-                        help="CSV output file (default: slip_measurements_<timestamp>.csv)")
+    parser.add_argument("--accel", type=float, default=8.0,
+                        help="accel limit while ramping to each speed [rev/s^2] (default 8)")
+    parser.add_argument("--settle-buffer", type=float, default=SETTLE_BUFFER,
+                        help="extra settle time after ramp completes [s] (default %(default)s)")
+    parser.add_argument("--label", default=None,
+                        help="optional tag appended to the artifact folder name")
+    parser.add_argument("--save-raw", action="store_true",
+                        help="save per-sample (t, omega_m, enc1_pos, q_A) to slip_raw_samples.csv")
+    parser.add_argument("--no-show", action="store_true",
+                        help="save the plot without opening a window")
     args = parser.parse_args()
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    if args.output is None:
-        args.output = f"slip_measurements_{timestamp}.csv"
-    plot_output = args.output.replace(".csv", ".png")
-
+    run = Run("belt_slip", target=args.target, label=args.label)
     transport = moteus.get_singleton_transport(args)
 
     qr = moteus.QueryResolution()
@@ -142,14 +150,15 @@ async def main():
     velocity_steps = np.linspace(args.min_vel, args.max_vel, args.steps)
 
     rows = []
+    raw_rows = []
     print(f"Target: moteus id={args.target}")
     print(f"{'Cmd':>6} {'ω_m':>10} {'ω_L':>10} {'i=ω_m/ω_L':>12} {'q_A':>8}")
     print("-" * 52)
 
     try:
         for v_cmd in velocity_steps:
-            omega_m, omega_L, q_mean = await measure_at_velocity(
-                controller, float(v_cmd), qr)
+            omega_m, omega_L, q_mean, raw = await measure_at_velocity(
+                controller, float(v_cmd), qr, args.accel, args.settle_buffer)
 
             if abs(omega_L) < 1e-4:
                 print(f"{v_cmd:6.2f}  load encoder not moving — skip")
@@ -159,6 +168,9 @@ async def main():
             print(f"{v_cmd:6.2f} {omega_m:10.4f} {omega_L:10.4f} {ratio_i:12.5f} {q_mean:8.4f}")
             rows.append(dict(v_cmd=v_cmd, omega_m=omega_m, omega_L=omega_L,
                              ratio_i=ratio_i, q_A=q_mean))
+            if args.save_raw:
+                for r in raw:
+                    raw_rows.append(dict(v_cmd=v_cmd, **r))
 
     finally:
         await controller.set_stop()
@@ -168,11 +180,11 @@ async def main():
         return
 
     # ---- save ----
-    with open(args.output, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
-    print(f"\nSaved {len(rows)} points → {args.output}")
+    run.save_csv(rows, "slip_measurements.csv")
+    if args.save_raw and raw_rows:
+        run.save_csv(raw_rows, "slip_raw_samples.csv")
+        print(f"  saved {len(raw_rows)} raw samples")
+    print(f"\nSaved {len(rows)} points")
 
     # ---- analysis ----
     om = np.array([r["omega_m"] for r in rows])
@@ -268,9 +280,20 @@ async def main():
     ax.grid(True)
 
     plt.tight_layout()
-    plt.savefig(plot_output, dpi=150)
-    print(f"\nPlot saved → {plot_output}")
-    plt.show()
+
+    run.set_meta(
+        n_points=len(rows),
+        i0=i0, i0_source=("provided" if args.i0 is not None else "min_observed"),
+        i_from_forced_slope=float(1.0 / slope_forced),
+        slip_mean=float(np.mean(slip)), slip_std=float(np.std(slip)),
+        slip_min=float(np.min(slip)), slip_max=float(np.max(slip)),
+        r2_forced=r2_forced, r2_free=r2_free,
+        vel_range_revs=[float(args.min_vel), float(args.max_vel)],
+    )
+    run.save_fig(plt, "belt_slip.svg")
+    run.finish()
+    if not args.no_show:
+        plt.show()
 
 
 if __name__ == "__main__":

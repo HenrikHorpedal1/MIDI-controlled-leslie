@@ -17,19 +17,28 @@
 
 """Local fork of moteus utils/compensate_encoder.py for this project.
 
-The only change from upstream is the default "inertial mode": instead of
-spinning the motor open loop with a fixed voltage (`d vdq`) and relying on
-inertia to hold a constant speed, this fork issues a closed-loop *velocity*
-command (`d pos nan <speed> nan`).  The motor's own commutation/position
-encoder (sources[0]) provides the velocity feedback, so the load is held at a
-genuinely constant speed even through a compliant/slipping belt.  Deviations of
-the TARGET encoder (e.g. the MA600 on sources[1], `-c 1`) from that constant
-speed are then attributable to its non-linearity (encoder INL plus any
-mounting eccentricity that is synchronous with the target encoder angle).
+This fork adds a closed-loop velocity drive for "inertial mode" alongside the
+upstream open-loop one, and selects between them with --drive (default auto):
 
-This is safe here because we calibrate sources[1] (the MA600), not the
-commutation magnet, so closing the loop on sources[0] does not affect the
-encoder under test.
+  * --drive velocity : closed-loop velocity command (`d pos nan <speed> nan`).
+    The motor's own commutation encoder (sources[0]) provides the velocity
+    feedback, so the load is held at a genuinely constant speed even through a
+    compliant/slipping belt.  Use this for a TARGET encoder that is NOT the
+    commutation source (e.g. the MA600 on sources[1], `-c 1`): its deviation
+    from the constant speed is then attributable to its own non-linearity
+    (encoder INL plus mounting eccentricity synchronous with its angle).
+
+  * --drive voltage : open-loop fixed Vq (`d vdq 0 <voltage>`, upstream's
+    method), relying on rotor inertia to smooth the speed.  This is the correct
+    choice when the target IS the commutation/self encoder (`-c 0`): closing a
+    velocity loop on the encoder under test would let the loop cancel the very
+    non-linearity we are trying to measure.
+
+  * --drive auto (default) : voltage if the target is the commutation source,
+    velocity otherwise.
+
+This fork also saves the plot, the measured/integrated data dumps, and a
+meta.json into analysis/data/ (channel 0 -> current/, 1 -> ma600/).
 
 There are two possible methods:
 
@@ -85,8 +94,18 @@ if _MOTEUS_UTILS not in sys.path:
 import histogram
 from encoder_math import wrap_half, wrap_zero_one, circular_mean
 
+from _artifacts import Run
+
 
 PRINT_DURATION = 0.1
+
+
+def _save_and_finish(run, args, name):
+    """Save the current figure + meta into the run folder; show if asked."""
+    run.save_fig(plt, name)
+    run.finish()
+    if not args.no_show:
+        plt.show()
 
 
 def parse_config(data):
@@ -158,7 +177,7 @@ def get_encoder(item, number):
         return item.values[moteus.Register.ENCODER_2_POSITION]
 
 
-async def run_reference_compensation(args, m, s, ax):
+async def run_reference_compensation(args, m, s, ax, run):
     results = []
     start_time = time.time()
     last_print = start_time
@@ -217,31 +236,47 @@ async def run_reference_compensation(args, m, s, ax):
     print(f"Max error: {max_error*100:.3f}%")
     print(f"Stddev error: {stddev_error*100:.3f}%")
 
+    run.set_meta(mode="reference", encoder_channel=args.encoder_channel,
+                 max_error=float(max_error), stddev_error=float(stddev_error))
+
     if args.analyze:
-        plt.show()
+        _save_and_finish(run, args, "encoder_analyze.png")
         sys.exit()
 
     return sorted(zip(measure_values, error_values))
 
 
-async def run_inertial_compensation(args, m, s, ax):
+async def run_inertial_compensation(args, m, s, ax, run, drive):
     await asyncio.sleep(1.0)
 
-    # Closed-loop velocity command: hold a constant speed using the motor's
-    # commutation/position encoder (sources[0]) for feedback, so the load stays
-    # at constant velocity through the belt.  The persistent `d pos` setpoint
-    # survives the histogram capture below without re-issuing (same pattern as
-    # measure_ma732_bct.py).  position=nan -> pure velocity control.
-    await s.command(
-        f"d pos nan {args.speed} nan a{args.accel}".encode('utf8'))
-
-    # Wait for the trapezoidal ramp to reach steady-state speed before we
-    # sample: time to speed is speed/accel (s), plus a settle margin.
-    ramp_time = (abs(args.speed) / args.accel) if args.accel > 0 else 0.0
-    await asyncio.sleep(ramp_time + args.settle_time)
+    # Two ways to get the rotor spinning at a near-constant speed for sampling:
+    #
+    #   drive == 'velocity' : closed-loop velocity command, holding a constant
+    #       speed using sources[0] (commutation) for feedback.  Use this only
+    #       when the TARGET encoder is NOT sources[0] (e.g. the MA600 on
+    #       sources[1]); the load then stays at constant velocity through the
+    #       belt and the target encoder's deviation is measured cleanly.
+    #
+    #   drive == 'voltage'  : open-loop fixed Vq (upstream's method), relying on
+    #       rotor inertia to smooth the speed.  This is the correct choice when
+    #       the target IS the commutation/self encoder, because closing the
+    #       velocity loop on the encoder under test would let the loop cancel
+    #       the very non-linearity we are trying to measure.
+    if drive == 'voltage':
+        await s.command(f"d vdq 0 {args.voltage}".encode('utf8'))
+        await asyncio.sleep(1.0)
+        expected_mode = 8  # 8 == voltage-FOC mode
+    else:
+        await s.command(
+            f"d pos nan {args.speed} nan a{args.accel}".encode('utf8'))
+        # Wait for the trapezoidal ramp to reach steady-state speed before we
+        # sample: time to speed is speed/accel (s), plus a settle margin.
+        ramp_time = (abs(args.speed) / args.accel) if args.accel > 0 else 0.0
+        await asyncio.sleep(ramp_time + args.settle_time)
+        expected_mode = 10  # 10 == position/velocity mode
 
     servo_stats = await s.read_data('servo_stats')
-    if servo_stats.mode != 10:  # 10 == position/velocity mode
+    if servo_stats.mode != expected_mode:
         # We special case the uncalibrated motor fault, as that is something
         if servo_stats.fault == 36:
             print("Controller is not yet calibrated.  Run:")
@@ -298,9 +333,14 @@ async def run_inertial_compensation(args, m, s, ax):
         (x, ((v / mean_velocity) - 1.0))
         for x, v in measured_velocities]
 
+    vel_stddev = float(numpy.std([v for x, v in unbiased_velocities]))
     print(f"Analysis results {'(post-compensation)' if tap == 'c' else '(pre-compensation)'}:")
     print(f" mean velocity: {mean_velocity}")
-    print(f" stddev: {numpy.std([v for x, v in unbiased_velocities])}")
+    print(f" stddev: {vel_stddev}")
+
+    run.set_meta(mode="inertial", drive=drive, encoder_channel=args.encoder_channel,
+                 tap=tap, speed=args.speed, voltage=args.voltage,
+                 mean_velocity=float(mean_velocity), velocity_stddev=vel_stddev)
 
     if args.write_unbiased:
         with open(args.write_unbiased, 'w') as out:
@@ -311,8 +351,7 @@ async def run_inertial_compensation(args, m, s, ax):
             label='measured velocity deviation')
 
     if args.analyze:
-        plt.show()
-
+        _save_and_finish(run, args, "encoder_analyze.png")
         sys.exit()
 
     integrated_velocities = integrate(unbiased_velocities)
@@ -353,7 +392,17 @@ async def main():
 
 
     ##############################################3
-    # Additional parameters for inertial mode (closed-loop velocity drive).
+    # Additional parameters for inertial mode.
+
+    # How to spin the rotor while sampling:
+    #   auto     -> 'voltage' if the target is the commutation encoder, else 'velocity'
+    #   velocity -> closed-loop velocity (only valid for a non-commutation target)
+    #   voltage  -> open-loop fixed Vq (correct for the commutation/self encoder)
+    parser.add_argument('--drive', choices=['auto', 'velocity', 'voltage'],
+                        default='auto')
+    # Fixed Vq for open-loop ('voltage') drive.  May need to be larger for low-Kv
+    # motors; raise it if the rotor barely spins.
+    parser.add_argument('--voltage', type=float, default=0.8)
 
     # Constant speed to hold while sampling, in output rev/s.
     parser.add_argument('--speed', type=float, default=2.0)
@@ -385,7 +434,20 @@ async def main():
 
     parser.add_argument('--verbose', '-v', action='store_true')
 
+    # Artifact capture (this fork): always save the plot + data into
+    # analysis/data/, routed by encoder channel (0 -> current/, 1 -> ma600/).
+    parser.add_argument('--label', default=None,
+                        help='optional tag appended to the artifact folder name')
+    parser.add_argument('--no-show', action='store_true',
+                        help='save the plot without opening a window')
+    parser.add_argument('--no-plot', action='store_true',
+                        help='do not draw the integrated/downsampled curves')
+
     args = parser.parse_args()
+
+    # This fork always produces a saved figure; force plotting on unless asked.
+    if not args.no_plot:
+        args.plot = True
 
     if args.reference_encoder is not None:
         args.absolute = True
@@ -442,6 +504,15 @@ async def main():
     # Verify the selected encoder is one we can actually compensate.
     await histogram.can_compensate_encoder(s, args.encoder_channel)
 
+    # Artifact run: onboard encoder (channel 0) -> current/, MA600 (1) -> ma600/.
+    step = "ma600" if args.encoder_channel == 1 else "current"
+    run = Run(step, target=args.target,
+              label=args.label or f"encoder{args.encoder_channel}")
+    if args.write_unbiased is None:
+        args.write_unbiased = run.path("unbiased_velocities.txt")
+    if args.write_integrated is None:
+        args.write_integrated = run.path("integrated_position.txt")
+
     fig, ax = plt.subplots()
 
     ax.set_xlabel(f'encoder {args.encoder_channel} position')
@@ -452,11 +523,20 @@ async def main():
     await s.command(b'conf set servopos.position_min nan')
     await s.command(b'conf set servopos.position_max nan')
 
+    # Resolve the inertial drive method: open-loop voltage when the target is
+    # the commutation/self encoder (closing a velocity loop on it would mask its
+    # own non-linearity), closed-loop velocity otherwise (e.g. the MA600).
+    drive = args.drive
+    if drive == 'auto':
+        drive = 'voltage' if used_for_commutation else 'velocity'
+    print(f"Inertial drive method: {drive}"
+          f"{' (target is commutation source)' if used_for_commutation else ''}")
+
     try:
         if args.reference_encoder is not None:
-            unbiased_integrated_velocities = await run_reference_compensation(args, m, s, ax)
+            unbiased_integrated_velocities = await run_reference_compensation(args, m, s, ax, run)
         else:
-            unbiased_integrated_velocities = await run_inertial_compensation(args, m, s, ax)
+            unbiased_integrated_velocities = await run_inertial_compensation(args, m, s, ax, run, drive)
     finally:
         await s.flush_read()
         await m.set_stop()
@@ -520,7 +600,7 @@ async def main():
         ax.legend(loc="upper left")
         ax2.legend(loc="upper right")
 
-        plt.show()
+    _save_and_finish(run, args, "encoder_compensation.png")
 
 if __name__ == '__main__':
     asyncio.run(main())
