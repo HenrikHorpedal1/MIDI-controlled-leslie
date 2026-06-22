@@ -3,51 +3,42 @@
 
 #include <Arduino.h>
 #include "clock_sync.h"
+#include "leslie_config.h"
 #include "freertos/FreeRTOS.h"
 
-// Rotor speed cap for beat-sync. A subdivision whose *faster* rotor at the
-// current tempo would exceed this is silently denied (the active subdivision is
-// kept). With every feel the horn is the faster (or equal) rotor, but the cap is
-// checked against min(hornTicks, drumTicks) regardless so it stays correct if
-// the ratios change.
-static constexpr double BEAT_MAX_RPM = 450.0;
+static constexpr uint8_t SUBDIVISION_COUNT = 13;
 
-// Per-subdivision rotor geometry. hornTicks = MIDI clocks per horn revolution
-// (= 2x the perceived note, two mics). R = rNum/rDen = horn swells per drum
-// swell; drumTicks = (R/2) * hornTicks. rNum/rDen are chosen so drumTicks is an
-// exact integer for every entry.
-struct SubdivInfo {
-  uint16_t hornTicks;
-  uint8_t  rNum;
-  uint8_t  rDen;
+// MIDI clocks (24 PPQN) per one full revolution of each rotor, per subdivision.
+// hornTicks = 2x the perceived note (two horn mics -> 2 swells/rev). drumTicks
+// follows from R = horn swells per drum swell: drumTicks = (R/2) * hornTicks
+// (R=2 duple -> equal; R=3 triplet -> 1.5x; R=8/3 dotted -> 4/3x). The values are
+// hardcoded (all exact integers); the R column is documentation only.
+//
+// Indexed by Subdivision; order MUST match the enum in beat_sync.h.
+struct SubdivTicks { uint16_t horn; uint16_t drum; };
+static constexpr SubdivTicks SUBDIV_TICKS[SUBDIVISION_COUNT] = {
+  /* Rest                */ {  0,  0 }, // ticks=0; rotors park
+  /* Half           R=2  */ { 96, 96 },
+  /* Quarter        R=2  */ { 48, 48 },
+  /* EighthDotted   R=8/3*/ { 36, 48 },
+  /* QuarterTriplet R=3  */ { 32, 48 },
+  /* Eighth         R=2  */ { 24, 24 },
+  /* SixteenthDotted R=8/3*/{ 18, 24 },
+  /* EighthTriplet  R=3  */ { 16, 24 },
+  /* Sixteenth      R=2  */ { 12, 12 },
+  /* 32ndDotted     R=8/3*/ {  9, 12 },
+  /* SixteenthTriplet R=3*/ {  8, 12 },
+  /* ThirtySecond   R=2  */ {  6,  6 },
+  /* 32ndTriplet    R=3  */ {  4,  6 },
 };
 
-static SubdivInfo subdivInfo(Subdivision s) {
-  switch (s) {
-    case Subdivision::Rest:                return { 0, 2, 1}; // ticks=0; rotors park
-    case Subdivision::Half:                return {96, 2, 1};
-    case Subdivision::Quarter:             return {48, 2, 1};
-    case Subdivision::EighthDotted:        return {36, 8, 3};
-    case Subdivision::QuarterTriplet:      return {32, 3, 1};
-    case Subdivision::Eighth:              return {24, 2, 1};
-    case Subdivision::SixteenthDotted:     return {18, 8, 3};
-    case Subdivision::EighthTriplet:       return {16, 3, 1};
-    case Subdivision::Sixteenth:           return {12, 2, 1};
-    case Subdivision::ThirtySecondDotted:  return { 9, 8, 3};
-    case Subdivision::SixteenthTriplet:    return { 8, 3, 1};
-    case Subdivision::ThirtySecond:        return { 6, 2, 1};
-    case Subdivision::ThirtySecondTriplet: return { 4, 3, 1};
-  }
-  return {48, 2, 1};
+static SubdivTicks subdivTicks(Subdivision s) {
+  const uint8_t i = static_cast<uint8_t>(s);
+  return (i < SUBDIVISION_COUNT) ? SUBDIV_TICKS[i] : SUBDIV_TICKS[2]; // default Quarter
 }
 
-uint16_t subdivisionHornTicks(Subdivision s) { return subdivInfo(s).hornTicks; }
-
-uint16_t subdivisionDrumTicks(Subdivision s) {
-  const SubdivInfo i = subdivInfo(s);
-  // drumTicks = (rNum/rDen / 2) * hornTicks; exact integer for all entries.
-  return (uint16_t)((uint32_t)i.hornTicks * i.rNum / (2u * i.rDen));
-}
+static uint16_t subdivisionHornTicks(Subdivision s) { return subdivTicks(s).horn; }
+static uint16_t subdivisionDrumTicks(Subdivision s) { return subdivTicks(s).drum; }
 
 // --------- Shared state (protected by a spinlock) ----------
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -94,22 +85,30 @@ uint16_t beatSyncGetDrumTicksPerCycle() {
   return subdivisionDrumTicks(beatSyncGetSubdivision());
 }
 
-// Rotor face offset to align with the beat (0..1 rev). -11.25/360 places the
-// leading edge of the 22.5-deg horn opening at the mic exactly on the beat.
-static constexpr double BEAT_HOME_FRAC = -11.25 / 360.0;
-
-static BeatTarget beatTarget(uint16_t ticksPerCycle) {
+static BeatTarget beatTarget(uint16_t ticksPerCycle, const ClockSnapshot& clk, double homeFrac) {
   const double tpc = (double)ticksPerCycle;
+  if (tpc <= 0.0) return {0.0, 0.0}; // Rest (ticks=0): no speed/phase, rotors park
+
   // revs/s = (MIDI ticks/s) / (ticks per cycle): one rotor revolution per cycle.
-  const double ticksPerSec = clockSyncGetBpm() / 60.0 * (double)MIDI_PPQN;
-  const double clockTicks = clockSyncGetTickPosition();
-  return {ticksPerSec / tpc, clockTicks / tpc + BEAT_HOME_FRAC};
+  const double ticksPerSec = clk.bpm / 60.0 * (double)MIDI_PPQN;
+  double velRevS = ticksPerSec / tpc;
+  // Live backstop to the selection-time cap (beatSyncSetSubdivisionFromCC): if the
+  // tempo rises after a subdivision is chosen, hold the rotor at BEAT_MAX_RPM
+  // rather than letting it over-speed. Phase will slip, speed stays bounded.
+  const double capRevS = BEAT_MAX_RPM / 60.0;
+  if (velRevS > capRevS) velRevS = capRevS;
+
+  // Retard the phase reference by a fixed TIME (BEAT_PHASE_LEAD_US) to cancel the
+  // downstream actuation/acoustic lead. Converting us -> ticks here makes the
+  // angular correction scale with tempo/subdivision automatically.
+  const double leadTicks = BEAT_PHASE_LEAD_US * 1e-6 * ticksPerSec;
+  return {velRevS, (clk.tickPosition - leadTicks) / tpc + homeFrac};
 }
 
-BeatTarget beatSyncHornTarget() {
-  return beatTarget(beatSyncGetHornTicksPerCycle());
-}
-
-BeatTarget beatSyncDrumTarget() {
-  return beatTarget(beatSyncGetDrumTicksPerCycle());
+void beatSyncGetTargets(BeatTarget& horn, BeatTarget& drum) {
+  ClockSnapshot clk;
+  clockSyncGetSnapshot(clk);
+  const Subdivision s = beatSyncGetSubdivision();
+  horn = beatTarget(subdivisionHornTicks(s), clk, HORN_BEAT_HOME_FRAC);
+  drum = beatTarget(subdivisionDrumTicks(s), clk, DRUM_BEAT_HOME_FRAC);
 }

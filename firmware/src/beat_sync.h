@@ -35,14 +35,8 @@ enum class Subdivision : uint8_t {
   ThirtySecondTriplet  // perceived 1/32T - horn  4, R=3
 };
 
-static constexpr uint8_t SUBDIVISION_COUNT = 13;
-
 // MIDI clock runs at 24 pulses per quarter note.
 static constexpr uint16_t MIDI_PPQN = 24;
-
-// MIDI clock ticks per one full revolution of each rotor at subdivision s.
-uint16_t subdivisionHornTicks(Subdivision s);
-uint16_t subdivisionDrumTicks(Subdivision s);
 
 // Set the active subdivision from a discrete CC value. CC 0 is reserved
 // (keyboard gate "off") and ignored. CC 1 selects Rest (rotors park). CC 2..N
@@ -61,5 +55,8 @@ struct BeatTarget {
   double velRevS; // target rotor speed (rev/s) from the current tempo
   double facePos; // absolute rotor face position the beat wants (revs)
 };
-BeatTarget beatSyncHornTarget();
-BeatTarget beatSyncDrumTarget();
+
+// Fill both rotor targets from ONE clock snapshot and ONE subdivision read, so
+// horn and drum (and each target's speed vs. phase) are mutually consistent.
+// Thread-safe. Only meaningful while the clock is running and locked.
+void beatSyncGetTargets(BeatTarget& horn, BeatTarget& drum);
