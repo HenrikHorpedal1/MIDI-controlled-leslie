@@ -4,25 +4,29 @@
 // Wrap to the nearest representation in (-0.5, 0.5].
 static inline double wrapRev(double x) { return x - round(x); }
 
-void loadEstimatorInit(LoadEstimator &e, double alpha, double beta) {
+void loadEstimatorInit(LoadEstimator &e, double beltRatio, double alpha, double beta) {
   e.alpha = alpha;
   e.beta = beta;
+  e.beltRatio = beltRatio;
   e.posL = 0.0;
   e.velL = 0.0;
   e.slip = 0.0;
   e.slipVel = 0.0;
+  e.innov = 0.0;
   e.init = false;
 }
 
 void loadEstimatorUpdate(LoadEstimator &e, double motorPos, double motorVel,
                          double ma600Pos, double dt) {
+  // Convert raw motor-frame values to load frame.
+  const double loadPos = motorPos / e.beltRatio;
+  const double loadVel = motorVel / e.beltRatio;
+
   if (!e.init) {
-    // Seed slip from the first measured offset (wrapped, since the MA600 may be
-    // mounted up to half a turn off) and start with zero creep rate.
-    e.slip = wrapRev(ma600Pos - motorPos);
+    e.slip = wrapRev(ma600Pos - loadPos);
     e.slipVel = 0.0;
-    e.posL = motorPos + e.slip;
-    e.velL = motorVel;
+    e.posL = loadPos + e.slip;
+    e.velL = loadVel;
     e.init = true;
     return;
   }
@@ -30,15 +34,18 @@ void loadEstimatorUpdate(LoadEstimator &e, double motorPos, double motorVel,
   // Predict: advance slip at the tracked creep rate.
   e.slip += e.slipVel * dt;
 
-  // Residual between the measured offset and the prediction, wrapped to ±0.5 rev
-  // (the MA600 only knows the offset modulo one revolution).
-  const double innov = wrapRev((ma600Pos - motorPos) - e.slip);
+  // Residual: both ma600Pos and loadPos are in load frame, so the offset is comparable.
+  const double innov = wrapRev((ma600Pos - loadPos) - e.slip);
+  e.innov = innov;  // expose slip-tracking error for scoping
 
-  // Correct both states (alpha-beta). Constant gains: stable at every speed,
-  // follows a steady creep ramp with no steady-state lag.
   e.slip += e.alpha * innov;
   e.slipVel += (e.beta / dt) * innov;
 
-  e.posL = motorPos + e.slip;
-  e.velL = motorVel + e.slipVel;
+  e.posL = loadPos + e.slip;
+  e.velL = loadVel + e.slipVel;
+}
+
+double loadEstimatorFaceToMotor(const LoadEstimator &e, double facePos) {
+  // Convert face (load) position to motor position: undo slip, then scale by i.
+  return (facePos - e.slip) * e.beltRatio;
 }
