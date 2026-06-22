@@ -1,0 +1,31 @@
+{
+  "step": "frf",
+  "target": 1,
+  "motor": "drum",
+  "label": "inertia",
+  "timestamp_iso": "2026-06-16T16:03:52",
+  "script": "capture_run.py",
+  "argv": [
+    "--step",
+    "frf",
+    "-t",
+    "1",
+    "--label",
+    "inertia",
+    "--",
+    "python",
+    "third_party/moteus/utils/measure_inertia.py",
+    "-t",
+    "1"
+  ],
+  "command": [
+    "python",
+    "/Users/henrikhorpedal/Documents/Skolearbeid/masteroppgave/MIDI-controlled-leslie/software/third_party/moteus/utils/measure_inertia.py",
+    "-t",
+    "1"
+  ],
+  "command_str": "python third_party/moteus/utils/measure_inertia.py -t 1",
+  "returncode": 1,
+  "produced_files": [],
+  "git_commit": "01314ad"
+}

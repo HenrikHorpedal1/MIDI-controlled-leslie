@@ -1,0 +1,37 @@
+{
+  "step": "verify",
+  "target": 1,
+  "motor": "drum",
+  "label": "cogging-off",
+  "timestamp_iso": "2026-06-16T14:52:48",
+  "script": "capture_run.py",
+  "argv": [
+    "--step",
+    "verify",
+    "-t",
+    "1",
+    "--label",
+    "cogging-off",
+    "--",
+    "python",
+    "third_party/moteus/utils/measure_velocity_performance.py",
+    "-t",
+    "1",
+    "--measure-error",
+    "--limit",
+    "0.05"
+  ],
+  "command": [
+    "python",
+    "/Users/henrikhorpedal/Documents/Skolearbeid/masteroppgave/MIDI-controlled-leslie/software/third_party/moteus/utils/measure_velocity_performance.py",
+    "-t",
+    "1",
+    "--measure-error",
+    "--limit",
+    "0.05"
+  ],
+  "command_str": "python third_party/moteus/utils/measure_velocity_performance.py -t 1 --measure-error --limit 0.05",
+  "returncode": 0,
+  "produced_files": [],
+  "git_commit": "01314ad"
+}

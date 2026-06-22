@@ -1,0 +1,30 @@
+{
+  "step": "ringdown",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-16T21:16:13",
+  "script": "capture_ringdown.py",
+  "argv": [
+    "-t",
+    "1",
+    "--duration",
+    "4"
+  ],
+  "files": [
+    "ringdown.csv",
+    "ringdown.png"
+  ],
+  "duration_s": 4.0,
+  "sample_rate_hz": 1255.1973041254441,
+  "band_hz": [
+    20.0,
+    200.0
+  ],
+  "n_peaks": 640,
+  "omega_h_rad_s": 909.4907610138627,
+  "omega_h_hz": 144.7499503117659,
+  "zeta_h": 0.0010860958911563738,
+  "Q_h": 460.3645074723987,
+  "git_commit": "01314ad"
+}

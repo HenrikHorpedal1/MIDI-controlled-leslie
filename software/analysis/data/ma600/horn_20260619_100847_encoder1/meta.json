@@ -1,0 +1,31 @@
+{
+  "step": "ma600",
+  "target": 2,
+  "motor": "horn",
+  "label": "encoder1",
+  "timestamp_iso": "2026-06-19T10:08:47",
+  "script": "compensate_encoder_velocity.py",
+  "argv": [
+    "-t",
+    "2",
+    "-c",
+    "1",
+    "--drive",
+    "velocity",
+    "--speed",
+    "2.0",
+    "--no-show"
+  ],
+  "mode": "inertial",
+  "drive": "velocity",
+  "encoder_channel": 1,
+  "tap": "c",
+  "speed": 2.0,
+  "voltage": 0.8,
+  "mean_velocity": 0.56429826953125,
+  "velocity_stddev": 0.06434804871821687,
+  "files": [
+    "encoder_compensation.png"
+  ],
+  "git_commit": "01314ad"
+}

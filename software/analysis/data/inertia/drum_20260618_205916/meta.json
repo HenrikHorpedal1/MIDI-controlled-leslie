@@ -1,0 +1,26 @@
+{
+  "step": "inertia",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-18T20:59:16",
+  "script": "measure_inertia.py",
+  "argv": [
+    "-t",
+    "1",
+    "--scale",
+    "1.1",
+    "--no-show"
+  ],
+  "files": [
+    "inertia_estimates.csv",
+    "inertia.svg"
+  ],
+  "n_runs": 1,
+  "n_estimates": 9,
+  "J_motor_kg_m2_median": 1.310720770347416e-05,
+  "J_motor_kg_m2_mean": 1.957923791428178e-05,
+  "J_motor_kg_m2_std": 1.3741470498705063e-05,
+  "J_motor_Nm_s2_rev": 8.235501486061993e-05,
+  "git_commit": "01314ad"
+}

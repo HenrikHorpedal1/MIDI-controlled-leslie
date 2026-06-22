@@ -1,0 +1,39 @@
+{
+  "step": "step",
+  "target": 1,
+  "motor": "drum",
+  "label": "park-soft",
+  "timestamp_iso": "2026-06-17T12:40:28",
+  "script": "capture_step.py",
+  "argv": [
+    "-t",
+    "1",
+    "--step",
+    "1.0",
+    "--vel-limit",
+    "5",
+    "--accel-limit",
+    "4",
+    "--max-torque",
+    "0.25",
+    "--duration",
+    "4",
+    "--no-show",
+    "--label",
+    "park-soft"
+  ],
+  "files": [
+    "step.csv",
+    "step.png"
+  ],
+  "step_rev": 1.0,
+  "hold_velocity_rev_s": 0.0,
+  "max_torque_Nm": 0.25,
+  "vel_limit_rev_s": 5.0,
+  "accel_limit_rev_s2": 4.0,
+  "rise_time_ms": 543.5221249936149,
+  "overshoot_pct": 7.733154296875,
+  "settling_2pct_ms": 2716.1930000176653,
+  "peak_torque_Nm": 0.06316319853067398,
+  "git_commit": "01314ad"
+}

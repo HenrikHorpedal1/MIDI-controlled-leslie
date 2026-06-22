@@ -1,0 +1,42 @@
+{
+  "step": "friction",
+  "target": 2,
+  "motor": "horn",
+  "label": null,
+  "timestamp_iso": "2026-06-19T10:12:46",
+  "script": "identify_friction.py",
+  "argv": [
+    "-t",
+    "2",
+    "--min-vel",
+    "0.3",
+    "--max-vel",
+    "32",
+    "--steps",
+    "18",
+    "--save-raw",
+    "--no-show"
+  ],
+  "files": [
+    "friction_map.csv",
+    "friction_raw_samples.csv",
+    "friction_map.svg",
+    "friction_ripple.svg"
+  ],
+  "fit": "coulomb+viscous+drag",
+  "n_points": 36,
+  "c_Coulomb_Nm": 0.007593617115308072,
+  "b_viscous_Nm_per_revs": 0.0007046298502189053,
+  "a_drag_Nm_per_revs2": 3.0818438461727e-05,
+  "bias_torque_at_1revs_Nm": 0.008329065403988704,
+  "T_disturbance_max_Nm": 0.06202309021511964,
+  "torque_std_max_Nm": 0.004159192039249107,
+  "omega_std_max_revs": 0.1422214463183315,
+  "ilimit_margin": 1.2,
+  "ilimit_recommended_Nm": 0.07442770825814357,
+  "speed_range_revs": [
+    0.3,
+    32.0
+  ],
+  "git_commit": "01314ad"
+}

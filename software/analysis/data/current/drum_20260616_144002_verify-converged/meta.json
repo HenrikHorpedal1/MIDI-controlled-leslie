@@ -1,0 +1,30 @@
+{
+  "step": "current",
+  "target": 1,
+  "motor": "drum",
+  "label": "verify-converged",
+  "timestamp_iso": "2026-06-16T14:40:02",
+  "script": "compensate_encoder_velocity.py",
+  "argv": [
+    "-t",
+    "1",
+    "-c",
+    "0",
+    "--analyze",
+    "--no-show",
+    "--label",
+    "verify-converged"
+  ],
+  "mode": "inertial",
+  "drive": "voltage",
+  "encoder_channel": 0,
+  "tap": "c",
+  "speed": 2.0,
+  "voltage": 0.8,
+  "mean_velocity": 5.96648869921875,
+  "velocity_stddev": 0.026700466863381428,
+  "files": [
+    "encoder_analyze.png"
+  ],
+  "git_commit": "01314ad"
+}

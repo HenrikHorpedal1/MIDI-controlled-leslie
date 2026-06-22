@@ -1,0 +1,42 @@
+{
+  "step": "friction",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-18T18:34:12",
+  "script": "identify_friction.py",
+  "argv": [
+    "-t",
+    "1",
+    "--min-vel",
+    "0.3",
+    "--max-vel",
+    "32",
+    "--steps",
+    "18",
+    "--save-raw",
+    "--no-show"
+  ],
+  "files": [
+    "friction_map.csv",
+    "friction_raw_samples.csv",
+    "friction_map.png",
+    "friction_ripple.png"
+  ],
+  "fit": "coulomb+viscous+drag",
+  "n_points": 36,
+  "c_Coulomb_Nm": 0.0028208422338249486,
+  "b_viscous_Nm_per_revs": 0.00022771749114087095,
+  "a_drag_Nm_per_revs2": 2.7479879895127292e-05,
+  "bias_torque_at_1revs_Nm": 0.003076039604860947,
+  "T_disturbance_max_Nm": 0.039043641610381506,
+  "torque_std_max_Nm": 0.010547036349515291,
+  "omega_std_max_revs": 0.29899491355045926,
+  "ilimit_margin": 1.2,
+  "ilimit_recommended_Nm": 0.0468523699324578,
+  "speed_range_revs": [
+    0.3,
+    32.0
+  ],
+  "git_commit": "01314ad"
+}

@@ -1,0 +1,84 @@
+{
+  "step": "park_test",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-19T08:39:00",
+  "script": "test_park.py",
+  "argv": [
+    "-t",
+    "1",
+    "--step",
+    "0.25",
+    "--c",
+    "2.82e-3",
+    "--b",
+    "2.28e-4",
+    "--a",
+    "2.70e-5",
+    "--J",
+    "7.30e-3",
+    "--velocity-limit",
+    "1",
+    "--accel-limit",
+    "2",
+    "--no-show"
+  ],
+  "files": [
+    "park_test.csv",
+    "park_test.svg"
+  ],
+  "step_rev": 0.25,
+  "hold_s": 4.0,
+  "c": 0.00282,
+  "b": 0.000228,
+  "a": 2.7e-05,
+  "J": 0.0073,
+  "velocity_limit": 1.0,
+  "accel_limit": 2.0,
+  "metrics": {
+    "no FF": {
+      "target": 30.957733154296875,
+      "ss_err": 0.006007408028217753,
+      "overshoot": 53.387451171875,
+      "settle_t": 2.7868930000113323,
+      "hold_jitter": 0.0019200150509130435
+    },
+    "ext friction": {
+      "target": 31.2119140625,
+      "ss_err": 0.003106832504272461,
+      "overshoot": 51.947021484375,
+      "settle_t": 2.481310459028464,
+      "hold_jitter": 0.0022414771285020037
+    },
+    "ext inertia": {
+      "target": 31.463699340820312,
+      "ss_err": 0.0019159317016601562,
+      "overshoot": 13.409423828125,
+      "settle_t": 1.7657028749817982,
+      "hold_jitter": 0.00021503286390124488
+    },
+    "ext full": {
+      "target": 31.715530395507812,
+      "ss_err": -0.016453576466393116,
+      "overshoot": 7.733154296875,
+      "settle_t": NaN,
+      "hold_jitter": 0.00028006093399297286
+    },
+    "mot inertia": {
+      "target": 31.950271606445312,
+      "ss_err": -0.02473580496651806,
+      "overshoot": 97.418212890625,
+      "settle_t": 3.8557339999824762,
+      "hold_jitter": 0.021432535604923118
+    },
+    "mot+friction": {
+      "target": 32.21257019042969,
+      "ss_err": -0.0003388348747677128,
+      "overshoot": 116.412353515625,
+      "settle_t": NaN,
+      "hold_jitter": 0.02946318547900114
+    }
+  },
+  "git_commit": "01314ad"
+}

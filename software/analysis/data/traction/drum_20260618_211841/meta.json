@@ -1,0 +1,42 @@
+{
+  "step": "traction",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-18T21:18:41",
+  "script": "measure_traction_limit.py",
+  "argv": [
+    "-t",
+    "1",
+    "--v-top",
+    "6",
+    "--no-show"
+  ],
+  "files": [
+    "traction.csv",
+    "traction.svg"
+  ],
+  "v_top_rev_s": 6.0,
+  "accels_rev_s2": [
+    1.0,
+    1.4,
+    1.96,
+    2.744,
+    3.842,
+    5.378,
+    7.53,
+    10.541,
+    14.758,
+    20.661,
+    28.925,
+    40.496,
+    56.694
+  ],
+  "slip_threshold": 0.05,
+  "backoff": 0.5,
+  "baseline_ratio": 4.130861752856348,
+  "gross_slip_onset_rev_s2": 14.758,
+  "recommended_accel_limit_rev_s2": 7.379,
+  "max_torque_Nm": 0.5,
+  "git_commit": "01314ad"
+}

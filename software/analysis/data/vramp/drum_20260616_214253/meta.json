@@ -1,0 +1,32 @@
+{
+  "step": "vramp",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-16T21:42:53",
+  "script": "capture_velocity_ramp.py",
+  "argv": [
+    "-t",
+    "1",
+    "--target-vel",
+    "8",
+    "--accel-limit",
+    "8",
+    "--max-torque",
+    "0.25",
+    "--no-show"
+  ],
+  "files": [
+    "vramp.csv",
+    "vramp.png"
+  ],
+  "target_vel_rev_s": 8.0,
+  "accel_limit_rev_s2": 8.0,
+  "max_torque_Nm": 0.25,
+  "steady_state_vel_rev_s": 8.002920299539786,
+  "steady_state_err_rev_s": 0.002920299539786342,
+  "overshoot_pct": 16.35843515396118,
+  "peak_torque_Nm": 0.12805715203285217,
+  "inertial_torque_req_Nm": 0.0789168074581756,
+  "git_commit": "01314ad"
+}

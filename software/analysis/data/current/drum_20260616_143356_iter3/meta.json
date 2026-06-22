@@ -1,0 +1,29 @@
+{
+  "step": "current",
+  "target": 1,
+  "motor": "drum",
+  "label": "iter3",
+  "timestamp_iso": "2026-06-16T14:33:56",
+  "script": "compensate_encoder_velocity.py",
+  "argv": [
+    "-t",
+    "1",
+    "-c",
+    "0",
+    "--no-show",
+    "--label",
+    "iter3"
+  ],
+  "mode": "inertial",
+  "drive": "voltage",
+  "encoder_channel": 0,
+  "tap": "c",
+  "speed": 2.0,
+  "voltage": 0.8,
+  "mean_velocity": 5.94493503515625,
+  "velocity_stddev": 0.0238229334015009,
+  "files": [
+    "encoder_compensation.png"
+  ],
+  "git_commit": "01314ad"
+}

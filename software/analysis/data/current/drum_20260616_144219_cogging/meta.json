@@ -1,0 +1,25 @@
+{
+  "step": "current",
+  "target": 1,
+  "motor": "drum",
+  "label": "cogging",
+  "timestamp_iso": "2026-06-16T14:42:19",
+  "script": "compensate_cogging_capture.py",
+  "argv": [
+    "-t",
+    "1",
+    "--store",
+    "--no-show"
+  ],
+  "poles": 8,
+  "commutation_source": 0,
+  "speed": 2,
+  "split_count": 8,
+  "cogging_dq_scale": 0.0013541653543307087,
+  "avg_peak": 0.171979,
+  "stored": true,
+  "files": [
+    "cogging.png"
+  ],
+  "git_commit": "01314ad"
+}

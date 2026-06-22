@@ -1,0 +1,34 @@
+{
+  "step": "ma600",
+  "target": 1,
+  "motor": "drum",
+  "label": "encoder1",
+  "timestamp_iso": "2026-06-18T19:41:25",
+  "script": "compensate_encoder_velocity.py",
+  "argv": [
+    "-t",
+    "1",
+    "-c",
+    "1",
+    "--speed",
+    "2.0",
+    "--no-show",
+    "--analyze"
+  ],
+  "mode": "inertial",
+  "drive": "velocity",
+  "encoder_channel": 1,
+  "tap": "c",
+  "speed": 2.0,
+  "voltage": 0.8,
+  "mean_velocity": NaN,
+  "velocity_stddev": NaN,
+  "velocity_baseline_mean_revs": 2.032617966334025,
+  "velocity_baseline_std_revs": 0.05603166789343075,
+  "enc1_position_residual_std_rev": 0.011240745152224837,
+  "enc1_position_residual_std_arcmin": 242.8000952880565,
+  "files": [
+    "encoder_analyze.png"
+  ],
+  "git_commit": "01314ad"
+}

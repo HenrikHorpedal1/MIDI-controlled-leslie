@@ -1,0 +1,45 @@
+{
+  "step": "frf",
+  "target": 2,
+  "motor": "horn",
+  "label": null,
+  "timestamp_iso": "2026-06-19T10:22:22",
+  "script": "identify_frf.py",
+  "argv": [
+    "-t",
+    "2",
+    "--f-min",
+    "0.5",
+    "--f-max",
+    "60",
+    "--points",
+    "25",
+    "--bias",
+    "0.008",
+    "--amp",
+    "0.02",
+    "--max-torque",
+    "0.5",
+    "--no-show"
+  ],
+  "files": [
+    "frf.csv",
+    "frf_bode.svg"
+  ],
+  "n_points": 25,
+  "anchored": false,
+  "hold_velocity_rev_s": 5.0,
+  "bias_torque_Nm": 0.008,
+  "amp_torque_Nm": 0.02,
+  "max_torque_Nm": 0.5,
+  "freq_range_hz": [
+    0.5,
+    60.0
+  ],
+  "Jbar_Nm_per_revs2": 0.002290464310900731,
+  "resonance_w1_hz": 0.5,
+  "resonance_w1_rad_s": 3.141592653589793,
+  "antiresonance_wa_hz": 9.964563592521559,
+  "antiresonance_wa_rad_s": 62.609199556988095,
+  "git_commit": "01314ad"
+}

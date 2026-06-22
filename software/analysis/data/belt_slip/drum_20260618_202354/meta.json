@@ -1,0 +1,44 @@
+{
+  "step": "belt_slip",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-18T20:23:54",
+  "script": "measure_belt_slip.py",
+  "argv": [
+    "-t",
+    "1",
+    "--min-vel",
+    "1",
+    "--max-vel",
+    "32",
+    "--steps",
+    "10",
+    "--i0",
+    "4.0",
+    "--accel",
+    "8.0",
+    "--save-raw",
+    "--no-show"
+  ],
+  "files": [
+    "slip_measurements.csv",
+    "slip_raw_samples.csv",
+    "belt_slip.svg"
+  ],
+  "n_points": 10,
+  "i0": 4.0,
+  "i0_source": "provided",
+  "i_from_forced_slope": 4.1561524901714835,
+  "slip_mean": 0.03540640715711811,
+  "slip_std": 0.0024939649936991325,
+  "slip_min": 0.032289654822862945,
+  "slip_max": 0.04010579526542424,
+  "r2_forced": 0.9999840005674101,
+  "r2_free": 0.9999905547025323,
+  "vel_range_revs": [
+    1.0,
+    32.0
+  ],
+  "git_commit": "01314ad"
+}

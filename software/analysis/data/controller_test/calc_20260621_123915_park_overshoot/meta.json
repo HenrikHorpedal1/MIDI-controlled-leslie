@@ -1,0 +1,27 @@
+{
+  "step": "controller_test",
+  "target": null,
+  "motor": "calc",
+  "label": "park_overshoot",
+  "timestamp_iso": "2026-06-21T12:39:15",
+  "script": "record_controller.py",
+  "argv": [
+    "--duration",
+    "20",
+    "--label",
+    "park_overshoot",
+    "--can-disable-brs"
+  ],
+  "files": [
+    "controller_test.csv",
+    "controller_test.svg"
+  ],
+  "duration_s": 19.98488812497817,
+  "n_samples": 781,
+  "sample_hz": 39.07952824733929,
+  "horn_id": 2,
+  "drum_id": 1,
+  "horn_belt_ratio": 3.675,
+  "drum_belt_ratio": 4.156,
+  "git_commit": "01314ad"
+}

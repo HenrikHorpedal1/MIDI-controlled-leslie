@@ -1,0 +1,48 @@
+{
+  "step": "frf",
+  "target": 1,
+  "motor": "drum",
+  "label": "hires",
+  "timestamp_iso": "2026-06-16T16:44:26",
+  "script": "identify_frf.py",
+  "argv": [
+    "-t",
+    "1",
+    "--anchored",
+    "--hold-velocity",
+    "5",
+    "--amp",
+    "0.03",
+    "--f-min",
+    "2",
+    "--f-max",
+    "10",
+    "--points",
+    "40",
+    "--max-torque",
+    "0.15",
+    "--no-show",
+    "--label",
+    "hires"
+  ],
+  "files": [
+    "frf.csv",
+    "frf_bode.png"
+  ],
+  "n_points": 40,
+  "anchored": true,
+  "hold_velocity_rev_s": 5.0,
+  "bias_torque_Nm": 0.006,
+  "amp_torque_Nm": 0.03,
+  "max_torque_Nm": 0.15,
+  "freq_range_hz": [
+    2.0,
+    10.0
+  ],
+  "Jbar_Nm_per_revs2": NaN,
+  "resonance_w1_hz": 9.595722768235655,
+  "resonance_w1_rad_s": 60.291704309146894,
+  "antiresonance_wa_hz": 3.870676898986695,
+  "antiresonance_wa_rad_s": 24.320180220552643,
+  "git_commit": "01314ad"
+}

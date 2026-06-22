@@ -1,0 +1,33 @@
+{
+  "step": "position_gains",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-16T17:45:06",
+  "script": "compute_position_gains.py",
+  "argv": [
+    "--J",
+    "1.57e-3",
+    "--bw",
+    "14",
+    "--zeta",
+    "0.8",
+    "--fc",
+    "200",
+    "--target",
+    "1"
+  ],
+  "J_Nm_per_revs2": 0.00157,
+  "omega1_rad_s": null,
+  "omega_n_rad_s": 14.0,
+  "omega_n_hz": 2.228169203286535,
+  "zeta": 0.8,
+  "fc_hz": 200.0,
+  "ki_frac": 0.2,
+  "ratio_i": null,
+  "frame": "motor frame (rotor_to_output_ratio = 1)",
+  "kp": 1.9334617827253022,
+  "ki": 5.413692991630847,
+  "kd": 0.22096706088289172,
+  "git_commit": "01314ad"
+}

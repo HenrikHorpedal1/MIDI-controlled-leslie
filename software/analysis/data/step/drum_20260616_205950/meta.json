@@ -1,0 +1,32 @@
+{
+  "step": "step",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-16T20:59:50",
+  "script": "capture_step.py",
+  "argv": [
+    "-t",
+    "1",
+    "--step",
+    "0.1",
+    "--hold-velocity",
+    "3",
+    "--max-torque",
+    "0.3"
+  ],
+  "files": [
+    "step.csv",
+    "step.png"
+  ],
+  "step_rev": 0.1,
+  "hold_velocity_rev_s": 3.0,
+  "max_torque_Nm": 0.3,
+  "vel_limit_rev_s": 500.0,
+  "accel_limit_rev_s2": 5000.0,
+  "rise_time_ms": 28.453332983190194,
+  "overshoot_pct": 351.87434667604975,
+  "settling_2pct_ms": 2498.746582993772,
+  "peak_torque_Nm": 0.18390804529190063,
+  "git_commit": "01314ad"
+}

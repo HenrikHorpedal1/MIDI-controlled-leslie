@@ -1,0 +1,39 @@
+{
+  "step": "step",
+  "target": 1,
+  "motor": "drum",
+  "label": "park-15s",
+  "timestamp_iso": "2026-06-17T13:31:00",
+  "script": "capture_step.py",
+  "argv": [
+    "-t",
+    "1",
+    "--step",
+    "1.0",
+    "--vel-limit",
+    "5",
+    "--accel-limit",
+    "4",
+    "--max-torque",
+    "0.25",
+    "--duration",
+    "15",
+    "--no-show",
+    "--label",
+    "park-15s"
+  ],
+  "files": [
+    "step.csv",
+    "step.png"
+  ],
+  "step_rev": 1.0,
+  "hold_velocity_rev_s": 0.0,
+  "max_torque_Nm": 0.25,
+  "vel_limit_rev_s": 5.0,
+  "accel_limit_rev_s2": 4.0,
+  "rise_time_ms": 538.9564159559086,
+  "overshoot_pct": 7.9986572265625,
+  "settling_2pct_ms": 2726.12216694979,
+  "peak_torque_Nm": 0.06372269988059998,
+  "git_commit": "01314ad"
+}

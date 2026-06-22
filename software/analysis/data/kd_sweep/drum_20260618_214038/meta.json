@@ -1,0 +1,44 @@
+{
+  "step": "kd_sweep",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-18T21:40:38",
+  "script": "sweep_kd.py",
+  "argv": [
+    "-t",
+    "1",
+    "--kds",
+    "0.01,0.02,0.03,0.04,0.05,0.07,0.10,0.15,0.20",
+    "--target-vel",
+    "8",
+    "--accel-limit",
+    "8",
+    "--no-show"
+  ],
+  "files": [
+    "kd_sweep.csv",
+    "kd_sweep.svg"
+  ],
+  "kds": [
+    0.01,
+    0.02,
+    0.03,
+    0.04,
+    0.05,
+    0.07,
+    0.1,
+    0.15,
+    0.2
+  ],
+  "target_vel_rev_s": 8.0,
+  "accel_limit_rev_s2": 8.0,
+  "hf_cut_hz": 30.0,
+  "hf_limit_rev_s": 0.05,
+  "backoff": 0.66,
+  "kd_original": 0.0,
+  "kd_max_stable": 0.07,
+  "kd_recommended": 0.046200000000000005,
+  "max_torque_Nm": 0.25,
+  "git_commit": "01314ad"
+}

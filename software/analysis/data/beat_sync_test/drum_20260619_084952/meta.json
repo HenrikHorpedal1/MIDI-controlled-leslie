@@ -1,0 +1,74 @@
+{
+  "step": "beat_sync_test",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-19T08:49:52",
+  "script": "test_beat_sync.py",
+  "argv": [
+    "-t",
+    "1",
+    "--v-target",
+    "4.0",
+    "--accel-limit",
+    "4.0",
+    "--hold",
+    "5.0",
+    "--c",
+    "2.82e-3",
+    "--b",
+    "2.28e-4",
+    "--a",
+    "2.70e-5",
+    "--J",
+    "7.30e-3",
+    "--no-show"
+  ],
+  "files": [
+    "beat_sync_test.csv",
+    "beat_sync_test.svg"
+  ],
+  "v_target": 4.0,
+  "accel_limit": 4.0,
+  "hold_s": 5.0,
+  "trim_accel": 0.2,
+  "vel_margin": 1.02,
+  "lock_threshold": 0.05,
+  "c": 0.00282,
+  "b": 0.000228,
+  "a": 2.7e-05,
+  "J": 0.0073,
+  "metrics": {
+    "no FF": {
+      "lock_t": 0.9669253749889322,
+      "cruise_rms": 0.4586971889600687,
+      "phase_rms": 40188.97628794607
+    },
+    "ext friction": {
+      "lock_t": 0.9627112500020303,
+      "cruise_rms": 0.4457040423967754,
+      "phase_rms": 39490.63256345293
+    },
+    "ext inertia": {
+      "lock_t": 0.9742619169992395,
+      "cruise_rms": 0.19804975812380332,
+      "phase_rms": 39634.744425542165
+    },
+    "ext full": {
+      "lock_t": 0.9563490420114249,
+      "cruise_rms": 0.16813578077488836,
+      "phase_rms": 41253.458480732574
+    },
+    "mot inertia": {
+      "lock_t": 0.6921306669828482,
+      "cruise_rms": 1.620038237458003,
+      "phase_rms": 95387.86932597103
+    },
+    "mot+friction": {
+      "lock_t": 0.2975130000268109,
+      "cruise_rms": 2.2761381460155423,
+      "phase_rms": 199268.77024651
+    }
+  },
+  "git_commit": "01314ad"
+}

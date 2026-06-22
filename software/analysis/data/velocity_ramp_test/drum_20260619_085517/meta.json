@@ -1,0 +1,72 @@
+{
+  "step": "velocity_ramp_test",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-19T08:55:17",
+  "script": "test_velocity_ramp.py",
+  "argv": [
+    "-t",
+    "1",
+    "--v-target",
+    "15.0",
+    "--accel-limit",
+    "8.0",
+    "--hold",
+    "5.0",
+    "--c",
+    "2.82e-3",
+    "--b",
+    "2.28e-4",
+    "--a",
+    "2.70e-5",
+    "--J",
+    "7.30e-3",
+    "--no-show"
+  ],
+  "files": [
+    "velocity_ramp_test.csv",
+    "velocity_ramp_test.svg"
+  ],
+  "v_target": 15.0,
+  "accel_limit": 8.0,
+  "hold_s": 5.0,
+  "decel": false,
+  "c": 0.00282,
+  "b": 0.000228,
+  "a": 2.7e-05,
+  "J": 0.0073,
+  "metrics": {
+    "no FF": {
+      "rms_err": 3.6507217861794814,
+      "rms_cruise": 0.45665371626321366,
+      "peak_err": 15.309020042419434
+    },
+    "ext friction": {
+      "rms_err": 3.629057573092188,
+      "rms_cruise": 0.4395862990599686,
+      "peak_err": 15.308738708496094
+    },
+    "ext inertia": {
+      "rms_err": 3.6047957468691223,
+      "rms_cruise": 0.24274288933448057,
+      "peak_err": 15.253822326660156
+    },
+    "ext full": {
+      "rms_err": 3.603301749881615,
+      "rms_cruise": 0.24274084220604633,
+      "peak_err": 15.349371910095215
+    },
+    "mot inertia": {
+      "rms_err": 3.3018661439203103,
+      "rms_cruise": 1.6012207906798435,
+      "peak_err": 16.402557373046875
+    },
+    "mot+friction": {
+      "rms_err": 3.1202665906415117,
+      "rms_cruise": 1.5189123735668193,
+      "peak_err": 15.537932395935059
+    }
+  },
+  "git_commit": "01314ad"
+}

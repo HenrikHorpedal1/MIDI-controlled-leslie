@@ -1,0 +1,35 @@
+{
+  "step": "current",
+  "target": 1,
+  "motor": "drum",
+  "label": "calibrate",
+  "timestamp_iso": "2026-06-16T13:49:00",
+  "script": "capture_run.py",
+  "argv": [
+    "--step",
+    "current",
+    "-t",
+    "1",
+    "--label",
+    "calibrate",
+    "--",
+    "python",
+    "third_party/moteus/utils/moteus_tool.py",
+    "-t",
+    "1",
+    "--calibrate"
+  ],
+  "command": [
+    "python",
+    "/Users/henrikhorpedal/Documents/Skolearbeid/masteroppgave/MIDI-controlled-leslie/software/third_party/moteus/utils/moteus_tool.py",
+    "-t",
+    "1",
+    "--calibrate"
+  ],
+  "command_str": "python third_party/moteus/utils/moteus_tool.py -t 1 --calibrate",
+  "returncode": 0,
+  "produced_files": [
+    "moteus-cal-ABkARFQwUBkgOTNO-20260616T115126.475252.log"
+  ],
+  "git_commit": "01314ad"
+}

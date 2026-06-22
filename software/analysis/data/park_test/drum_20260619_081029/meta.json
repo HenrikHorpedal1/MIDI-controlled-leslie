@@ -1,0 +1,63 @@
+{
+  "step": "park_test",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-19T08:10:29",
+  "script": "test_park.py",
+  "argv": [
+    "-t",
+    "1",
+    "--step",
+    "0.25",
+    "--c",
+    "2.82e-3",
+    "--b",
+    "2.28e-4",
+    "--a",
+    "2.70e-5",
+    "--J",
+    "7.30e-3",
+    "--velocity-limit",
+    "1",
+    "--accel-limit",
+    "2",
+    "--no-show"
+  ],
+  "files": [
+    "park_test.csv",
+    "park_test.svg"
+  ],
+  "step_rev": 0.25,
+  "hold_s": 4.0,
+  "c": 0.00282,
+  "b": 0.000228,
+  "a": 2.7e-05,
+  "J": 0.0073,
+  "velocity_limit": 1.0,
+  "accel_limit": 2.0,
+  "metrics": {
+    "no FF": {
+      "target": 17.275863647460938,
+      "ss_err": 0.03313977790601186,
+      "overshoot": 13.51318359375,
+      "settle_t": NaN,
+      "hold_jitter": 0.0009757349073948845
+    },
+    "FF ref": {
+      "target": 17.557174682617188,
+      "ss_err": 0.0001622368307678812,
+      "overshoot": 3.3203125,
+      "settle_t": 0.8062007499975152,
+      "hold_jitter": 4.7767309809495134e-05
+    },
+    "FF state": {
+      "target": 17.804275512695312,
+      "ss_err": -1.860805184500558,
+      "overshoot": -109.8388671875,
+      "settle_t": NaN,
+      "hold_jitter": 0.22337051216680134
+    }
+  },
+  "git_commit": "01314ad"
+}

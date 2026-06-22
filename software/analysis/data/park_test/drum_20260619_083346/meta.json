@@ -1,0 +1,56 @@
+{
+  "step": "park_test",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-19T08:33:46",
+  "script": "test_park.py",
+  "argv": [
+    "-t",
+    "1",
+    "--step",
+    "1.0",
+    "--c",
+    "2.82e-3",
+    "--b",
+    "2.28e-4",
+    "--a",
+    "2.70e-5",
+    "--J",
+    "7.30e-3",
+    "--velocity-limit",
+    "1",
+    "--accel-limit",
+    "2",
+    "--no-show"
+  ],
+  "files": [
+    "park_test.csv",
+    "park_test.svg"
+  ],
+  "step_rev": 1.0,
+  "hold_s": 4.0,
+  "c": 0.00282,
+  "b": 0.000228,
+  "a": 2.7e-05,
+  "J": 0.0073,
+  "velocity_limit": 1.0,
+  "accel_limit": 2.0,
+  "metrics": {
+    "no FF": {
+      "target": 28.978286743164062,
+      "ss_err": 0.21685365770683873,
+      "overshoot": 27.18505859375,
+      "settle_t": NaN,
+      "hold_jitter": 0.021018653469612514
+    },
+    "FF ref": {
+      "target": 30.150146484375,
+      "ss_err": 0.07026139516679208,
+      "overshoot": 9.4207763671875,
+      "settle_t": NaN,
+      "hold_jitter": 0.004567269378099713
+    }
+  },
+  "git_commit": "01314ad"
+}

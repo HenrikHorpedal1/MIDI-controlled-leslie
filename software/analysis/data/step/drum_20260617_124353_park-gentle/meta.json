@@ -1,0 +1,39 @@
+{
+  "step": "step",
+  "target": 1,
+  "motor": "drum",
+  "label": "park-gentle",
+  "timestamp_iso": "2026-06-17T12:43:53",
+  "script": "capture_step.py",
+  "argv": [
+    "-t",
+    "1",
+    "--step",
+    "1.0",
+    "--vel-limit",
+    "3",
+    "--accel-limit",
+    "2",
+    "--max-torque",
+    "0.25",
+    "--duration",
+    "10",
+    "--no-show",
+    "--label",
+    "park-gentle"
+  ],
+  "files": [
+    "step.csv",
+    "step.png"
+  ],
+  "step_rev": 1.0,
+  "hold_velocity_rev_s": 0.0,
+  "max_torque_Nm": 0.25,
+  "vel_limit_rev_s": 3.0,
+  "accel_limit_rev_s2": 2.0,
+  "rise_time_ms": 721.9152500038035,
+  "overshoot_pct": 3.497314453125,
+  "settling_2pct_ms": 2387.5943750492297,
+  "peak_torque_Nm": 0.03719487413764,
+  "git_commit": "01314ad"
+}

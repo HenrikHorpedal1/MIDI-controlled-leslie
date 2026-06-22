@@ -1,0 +1,30 @@
+{
+  "step": "park_test",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-18T22:25:50",
+  "script": "test_park.py",
+  "argv": [
+    "-t",
+    "1",
+    "--step",
+    "0.25",
+    "--hold",
+    "4",
+    "--no-show"
+  ],
+  "files": [
+    "park_test.csv",
+    "park_test.svg"
+  ],
+  "step_rev": 0.25,
+  "hold_s": 4.0,
+  "velocity_limit": 4.0,
+  "accel_limit": 8.0,
+  "steady_state_error_rev": -0.030753580729196983,
+  "overshoot_pct": 89.0625,
+  "settling_5pct_s": NaN,
+  "hold_jitter_rev": 0.12994339259200643,
+  "git_commit": "01314ad"
+}

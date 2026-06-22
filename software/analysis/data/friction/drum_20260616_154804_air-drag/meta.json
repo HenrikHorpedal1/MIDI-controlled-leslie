@@ -1,0 +1,40 @@
+{
+  "step": "friction",
+  "target": 1,
+  "motor": "drum",
+  "label": "air-drag",
+  "timestamp_iso": "2026-06-16T15:48:04",
+  "script": "identify_friction.py",
+  "argv": [
+    "-t",
+    "1",
+    "--min-vel",
+    "0.2",
+    "--max-vel",
+    "31",
+    "--steps",
+    "14",
+    "--accel",
+    "8",
+    "--no-stribeck",
+    "--no-show",
+    "--label",
+    "air-drag"
+  ],
+  "files": [
+    "friction_map.csv",
+    "friction_map.png"
+  ],
+  "fit": "coulomb+viscous",
+  "n_points": 28,
+  "T_C_Nm": -0.0007044384049448373,
+  "b_Nm_per_revs": 0.0010512396571837617,
+  "T_S_Nm": null,
+  "w_S_revs": null,
+  "bias_torque_at_1revs_Nm": 0.0003468012522389244,
+  "speed_range_revs": [
+    0.2,
+    31.0
+  ],
+  "git_commit": "01314ad"
+}

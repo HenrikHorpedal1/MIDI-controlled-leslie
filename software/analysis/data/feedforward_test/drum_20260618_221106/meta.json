@@ -1,0 +1,36 @@
+{
+  "step": "feedforward_test",
+  "target": 1,
+  "motor": "drum",
+  "label": null,
+  "timestamp_iso": "2026-06-18T22:11:06",
+  "script": "test_feedforward.py",
+  "argv": [
+    "-t",
+    "1",
+    "--c",
+    "0",
+    "--b",
+    "0",
+    "--a",
+    "0",
+    "--v-top",
+    "15",
+    "--accel",
+    "4",
+    "--no-show"
+  ],
+  "files": [
+    "feedforward_test.csv",
+    "feedforward_test.svg"
+  ],
+  "c": 0.0,
+  "b": 0.0,
+  "a": 0.0,
+  "v_top": 15.0,
+  "accel": 4.0,
+  "rms_error_ff_off": 0.673292712402814,
+  "rms_error_ff_on": 0.6751240425848549,
+  "improvement_pct": -0.2719961390203373,
+  "git_commit": "01314ad"
+}
