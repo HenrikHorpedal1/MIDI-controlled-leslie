@@ -3,7 +3,7 @@
 
 #include "moteus-config.h"
 #include "clock_sync.h"
-#include "midi-listner.h"
+#include "midi-listener.h"
 #include "input_event.h"
 
 // ------------------------------------------------------------
@@ -119,7 +119,7 @@ void setup() {
 
   // MIDI parser / listener task
   BaseType_t midiOk = xTaskCreatePinnedToCore(
-      midiListnerTask,
+      midiListenerTask,
       "midi",
       4096,
       &midiParams,

@@ -1,4 +1,5 @@
 #include "moteus-config.h"
+#include "leslie_config.h"
 
 #include <SPI.h>
 
@@ -34,8 +35,9 @@ Moteus &drumMoteus() { return g_drum; }
 namespace {
 mm::PositionMode::Format makePositionFmt() {
   mm::PositionMode::Format f;
-  f.accel_limit = mm::kFloat;
-  f.velocity_limit = mm::kFloat;
+  f.feedforward_torque = mm::kFloat;
+  f.accel_limit        = mm::kFloat;
+  f.velocity_limit     = mm::kFloat;
   return f;
 }
 
@@ -43,10 +45,20 @@ mm::Query::Format makeQueryFmt() {
   mm::Query::Format f;
   f.position = mm::kFloat;
   f.velocity = mm::kFloat;
-  f.extra[0].register_number = mm::Register(0x052); // Encoder 1 position
+  f.torque   = mm::kFloat;                          // measured torque (0x00a)
+  // Internal control-loop references (planner output) for the position-
+  // controller test. Extras MUST stay in ascending register order: the moteus
+  // protocol reads them as one contiguous block (min = extra[0], max = last).
+  f.extra[0].register_number = mm::Register(0x038); // Control position
   f.extra[0].resolution = mm::kFloat;
-  f.extra[1].register_number = mm::Register(0x053); // Encoder 1 velocity
+  f.extra[1].register_number = mm::Register(0x039); // Control velocity
   f.extra[1].resolution = mm::kFloat;
+  f.extra[2].register_number = mm::Register(0x03a); // Control torque
+  f.extra[2].resolution = mm::kFloat;
+  f.extra[3].register_number = mm::Register(0x052); // Encoder 1 position
+  f.extra[3].resolution = mm::kFloat;
+  f.extra[4].register_number = mm::Register(0x053); // Encoder 1 velocity
+  f.extra[4].resolution = mm::kFloat;
   return f;
 }
 
@@ -90,10 +102,13 @@ bool configureMoteus(Print &debug) {
   if (g_horn.SetStop(&enc1Qf)) {
     const float enc1Pos = g_horn.last_result().values.extra[0].value;
     mm::OutputExact::Command oeCmd;
-    oeCmd.position = enc1Pos;
+    // rotor_to_output_ratio=1: output counter is in motor revs.
+    // Scale enc1Pos (load revs) by belt ratio so motorPos/i == enc1Pos at startup.
+    oeCmd.position = enc1Pos * static_cast<float>(HORN_BELT_RATIO);
     g_horn.SetOutputExact(oeCmd);
     delay(20);
-    debug.printf("Horn output aligned to enc1=%.4f\n", enc1Pos);
+    debug.printf("Horn output aligned to enc1=%.4f (motor=%.4f)\n",
+                 enc1Pos, oeCmd.position);
   } else {
     debug.println("WARN: No reply from horn moteus");
   }
@@ -101,10 +116,11 @@ bool configureMoteus(Print &debug) {
   if (g_drum.SetStop(&enc1Qf)) {
     const float enc1Pos = g_drum.last_result().values.extra[0].value;
     mm::OutputExact::Command oeCmd;
-    oeCmd.position = enc1Pos;
+    oeCmd.position = enc1Pos * static_cast<float>(DRUM_BELT_RATIO);
     g_drum.SetOutputExact(oeCmd);
     delay(20);
-    debug.printf("Drum output aligned to enc1=%.4f\n", enc1Pos);
+    debug.printf("Drum output aligned to enc1=%.4f (motor=%.4f)\n",
+                 enc1Pos, oeCmd.position);
   } else {
     debug.println("WARN: No reply from drum moteus");
   }

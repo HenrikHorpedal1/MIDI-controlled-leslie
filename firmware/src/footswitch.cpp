@@ -9,9 +9,6 @@
 const TickType_t LED_ON_TIME  = 1;
 const TickType_t LED_OFF_TIME = 9;
 
-volatile bool switchA = false;
-volatile bool switchB = false;
-
 static QueueHandle_t s_inputQueue = nullptr;
 
 static bool readSwitchA() {
@@ -87,22 +84,6 @@ void footSwitchTask(void *pvParameters)
 
     for (;;)
     {
-        // --- DEBUG: serial footswitch sim — '1'=chorale(A) '2'=tremolo(A+B) '0'=stop ---
-        if (Serial.available() && s_inputQueue != nullptr) {
-            char c = Serial.read();
-            bool sa = false, sb = false;
-            if      (c == '1') { sa = true;  sb = false; }
-            else if (c == '2') { sa = true;  sb = true;  }
-            else if (c == '0') { sa = false; sb = false; }
-            if (c == '0' || c == '1' || c == '2') {
-                InputEvent ev;
-                ev.type      = EventType::Footswitch;
-                ev.data.foot = FootswitchState{ sa, sb };
-                xQueueSend(s_inputQueue, &ev, 0);
-            }
-        }
-        // --- END DEBUG ---
-
         bool a = readSwitchA();
         bool b = readSwitchB();
 

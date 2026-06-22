@@ -6,29 +6,24 @@
 // Reference, and publishes the whole Reference as one coherent snapshot. The
 // controller reads only that snapshot (plus the clock and its own feedback).
 #include "input_event.h"
+#include "leslie_config.h"
 #include "source-selector.h"
 #include "reference.h"
 #include "beat_sync.h"
-#include "midi-listner.h"
+#include "midi-listener.h"
 #include <Arduino.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 
-constexpr float HORN_CHORALE_RPM = 40.0f;
-constexpr float HORN_TREMOLO_RPM = 420.0f;
-constexpr float DRUM_CHORALE_RPM = 35.0f;
-constexpr float DRUM_TREMOLO_RPM = 350.0f;
-
-// Footswitch Chorale runs a touch faster than the MIDI-triggered Chorale.
-constexpr float FOOT_HORN_CHORALE_RPM = 50.0f;
-constexpr float FOOT_DRUM_CHORALE_RPM = 44.0f;
+// Top of the horn-RPM range mapped from the rate CC (keyboard mode).
+constexpr float RATE_CC_RPM_MAX = 400.0f;
 
 static QueueHandle_t g_inputQueue = nullptr;
 
-static float midiCCToRPM(uint8_t ccVal) {
-  constexpr float RPM_MAX = 400.0f;
+// Map the free-running rate CC (0..127) to a horn RPM, with a low-end deadband.
+static float rateCcToRpm(uint8_t ccVal) {
   constexpr uint8_t CC_MAX = 127;
   constexpr uint8_t CC_DEADBAND = 10;
 
@@ -39,9 +34,9 @@ static float midiCCToRPM(uint8_t ccVal) {
   float t = static_cast<float>(ccVal - CC_DEADBAND) /
             static_cast<float>(CC_MAX - CC_DEADBAND); // 0..1
 
-  float rpm = t * RPM_MAX;
-  if (rpm > RPM_MAX)
-    rpm = RPM_MAX; // safety clamp
+  float rpm = t * RATE_CC_RPM_MAX;
+  if (rpm > RATE_CC_RPM_MAX)
+    rpm = RATE_CC_RPM_MAX; // safety clamp
 
   return rpm;
 }
@@ -97,7 +92,7 @@ static void handleMidiKeyboard(Reference &ref, const InputEvent &ev) {
     const MidiCCEvent &cc = ev.data.midiCC;
     if (cc.control == MIDI_RATE_CC) {
       // Free-running rate -> RPM.
-      const float rpm = midiCCToRPM(cc.value);
+      const float rpm = rateCcToRpm(cc.value);
       ref.hornRPM = rpm;
       ref.drumRPM = rpm * (DRUM_TREMOLO_RPM / HORN_TREMOLO_RPM);
     } else if (cc.control == MIDI_SUSTAIN_CC) {
@@ -141,8 +136,10 @@ void inputHandlerTask(void *pvParameters) {
         ref.mode = (activeSource == InputSource::MidiBeatSync)
                        ? DriveMode::BeatSync
                        : DriveMode::Velocity;
-        // RPM is intentionally preserved across a source switch: the rotor keeps
-        // doing what it did until the newly-selected source issues a command.
+        // Park the rotors on every source switch: zeroing the reference sends the
+        // controller to Park, so turning the selector always brings the Leslie to
+        // a clean stop and the newly-selected source starts from rest.
+        ref.hornRPM = ref.drumRPM = 0.0f;
       } else {
         switch (activeSource) {
         case InputSource::Footswitch:

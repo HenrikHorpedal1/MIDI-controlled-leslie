@@ -20,7 +20,7 @@
 #include "beat_sync.h"
 #include "clock_sync.h"
 #include "input_event.h"
-#include "midi-listner.h"
+#include "midi-listener.h"
 
 // Mirrors controller.cpp's BEAT_HOME_FRAC: the rotor face fraction to align with
 // the beat. One rotor revolution per synced subdivision cycle (RPM == BPM at
@@ -87,7 +87,7 @@ void setup() {
 
   midiParams = {inputQueue, clockQueue};
 
-  BaseType_t midiOk = xTaskCreatePinnedToCore(midiListnerTask, "midi", 4096,
+  BaseType_t midiOk = xTaskCreatePinnedToCore(midiListenerTask, "midi", 4096,
                                               &midiParams, 3, nullptr, 1);
   BaseType_t clkOk = xTaskCreatePinnedToCore(clockSyncTask, "clk", 4096,
                                              clockQueue, 2, nullptr, 1);

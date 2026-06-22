@@ -10,7 +10,7 @@ Target board: **ESP32S3 Dev Module** (`esp32:esp32:esp32s3`).
 - `src/` — library sources (the actual implementation).
 - `main/main.ino` — the main application sketch.
 - `examples/` — standalone sketches for testing individual subsystems
-  (footswitch, input-handler, jitter-logger, midi-listner, mode-selector,
+  (footswitch, input-handler, jitter-logger, midi-listener, mode-selector,
   one-edge-logger, test-sync).
 - `pin-overview.md` —GPIO mapping.
 

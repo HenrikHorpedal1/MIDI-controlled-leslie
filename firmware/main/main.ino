@@ -1,5 +1,5 @@
 #include "footswitch.h"
-#include "midi-listner.h"
+#include "midi-listener.h"
 #include "input_handler.h"
 #include "input_event.h"
 #include "reference.h"
@@ -7,6 +7,7 @@
 #include "controller.h"
 #include "source-selector.h"
 #include "udp_telemetry.h"
+#include "telemetry_log.h"
 #include "wifi_config.h"
 #include <WiFi.h>
 
@@ -21,102 +22,132 @@ static QueueHandle_t g_clockQueue = nullptr;
 static MidiTaskParams g_midiParams;
 
 static void wifiTelemetryTask(void*) {
-    WiFi.begin(TELEM_WIFI_SSID, TELEM_WIFI_PASSWORD);
-    for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
-        vTaskDelay(pdMS_TO_TICKS(500));
+    // Retry until connected, so telemetry recovers if the AP appears late or
+    // WiFi drops during boot. Once up, start telemetry and self-delete.
+    for (;;) {
+        WiFi.begin(TELEM_WIFI_SSID, TELEM_WIFI_PASSWORD);
+        for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.printf("[wifi] connected: %s\n", WiFi.localIP().toString().c_str());
+            Telemetry.begin(TELEM_HOST, TELEM_PORT);
+            vTaskDelete(nullptr);
+        }
+        Serial.println("[wifi] not connected — retrying");
+        WiFi.disconnect();
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("[wifi] connected: %s\n", WiFi.localIP().toString().c_str());
-        Telemetry.begin(TELEM_HOST, TELEM_PORT);
-    } else {
-        Serial.println("[wifi] not connected — telemetry disabled");
-    }
-    vTaskDelete(nullptr);
 }
 
 void setup() {
     Serial.begin(115200);
 
     referenceInit();
+    telemetryLogInit(); // create the telemetry bus before any producer runs
 
     g_inputQueue = xQueueCreate(16, sizeof(InputEvent));
-    g_clockQueue = xQueueCreate(32, sizeof(ClockMsg)); //TODO: does it make sense to have a greater clock queue than midi queue if all signals goes through midi first?
+    // Clock queue is deeper than the input queue on purpose: MIDI clock ticks
+    // (up to ~120/s at 24 PPQN) are far higher-rate than discrete input events
+    // and ride their own queue, so they need more burst headroom.
+    g_clockQueue = xQueueCreate(32, sizeof(ClockMsg));
 
     g_midiParams.inputQueue = g_inputQueue;
     g_midiParams.clockQueue = g_clockQueue;
 
 #ifndef CLOCK_SIM
-    xTaskCreate(
+    xTaskCreatePinnedToCore(
         footSwitchTask,
         "footSwitchTask",
         4096,
         g_inputQueue,
-        3,
-        nullptr
+        2,
+        nullptr,
+        0       // core 0
     );
 
-    xTaskCreate(
-        midiListnerTask,
-        "midiListnerTask",
+    // Higher priority than clockSyncTask so timestamps are captured before
+    // the PLL consumes them.
+    xTaskCreatePinnedToCore(
+        midiListenerTask,
+        "midiListenerTask",
         4096,
         &g_midiParams,
-        3,
-        nullptr
+        5,
+        nullptr,
+        0       // core 0
     );
 #else
-    xTaskCreate(
+    xTaskCreatePinnedToCore(
         clockSimTask,
         "clockSimTask",
         4096,
         g_clockQueue,
         3,
-        nullptr
+        nullptr,
+        0       // core 0
     );
 #endif
 
-    xTaskCreate(
+    xTaskCreatePinnedToCore(
         clockSyncTask,
         "clockSyncTask",
         4096,
         g_clockQueue,
-        4,      // priority
-        nullptr
+        4,
+        nullptr,
+        0       // core 0
     );
 
-    xTaskCreate(
+    xTaskCreatePinnedToCore(
         inputHandlerTask,
         "inputHandlerTask",
         4096,
         g_inputQueue,
-        4,      // priority
-        nullptr
+        3,
+        nullptr,
+        0       // core 0
     );
 
-    xTaskCreate(
+    // Dedicated core — no competition from other app tasks.
+    xTaskCreatePinnedToCore(
         controllerTask,
         "ControllerTask",
         4096,
         nullptr,
-        5,      // priority
-        nullptr
+        5,
+        nullptr,
+        1       // core 1 (APP_CPU), dedicated
     );
 
-    xTaskCreate(
+    xTaskCreatePinnedToCore(
+        telemetryLogTask,
+        "telemetryTask",
+        4096,
+        nullptr,
+        1,
+        nullptr,
+        0       // core 0
+    );
+
+    xTaskCreatePinnedToCore(
         sourceSelectorTask,
         "sourceSelectorTask",
         2048,
-        g_inputQueue,   // pushes SourceChange events
-        2,      // low priority — polls at 5 Hz
-        nullptr
+        g_inputQueue,
+        2,
+        nullptr,
+        0       // core 0
     );
 
-    xTaskCreate(
+    xTaskCreatePinnedToCore(
         wifiTelemetryTask,
         "wifiTelemetryTask",
         4096,
         nullptr,
-        1,      // lowest priority — background, self-deletes after connect
-        nullptr
+        1,
+        nullptr,
+        0       // core 0 — keeps WiFi work on the WiFi core
     );
 }
 

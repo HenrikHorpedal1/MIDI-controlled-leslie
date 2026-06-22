@@ -1,5 +1,5 @@
 #include "footswitch.h"
-#include "midi-listner.h"
+#include "midi-listener.h"
 #include "input_handler.h"
 #include "input_event.h"
 #include "reference.h"
@@ -26,8 +26,8 @@ void setup(){
   );
 
   xTaskCreate(
-      midiListnerTask,
-      "midiListnerTask",
+      midiListenerTask,
+      "midiListenerTask",
       4096,
       g_inputQueue,
       3,
