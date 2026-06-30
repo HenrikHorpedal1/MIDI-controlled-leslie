@@ -3,6 +3,20 @@
 Monorepo for a MIDI-controlled Leslie speaker build — firmware, hardware design, and the Python
 tooling used to configure the motors and analyse measurements.
 
+## Demos
+
+**Tempo sync** — horn speed locked to MIDI clock
+
+https://github.com/user-attachments/assets/804f9586-0638-46d0-b1d2-34bc3389345e
+
+**Rock'n'roll**
+
+https://github.com/user-attachments/assets/c1948277-36b1-4e50-a5de-1323c6d4f3f3
+
+**Black Hole Sun**
+
+https://github.com/user-attachments/assets/2e4643aa-8b3f-4453-b8d9-3a8be26efdcb
+
 ## Cloning
 
 This repo uses a git submodule (upstream moteus, for its `utils/` scripts):
